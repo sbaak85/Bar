@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>酒吧接酒杯</title>
+  <link rel="stylesheet" href="Assets/styles.css">
+</head>
+<body>
+  <main class="game-shell">
+    <section class="game-stage" aria-label="酒吧接酒杯小遊戲">
+      <canvas id="gameCanvas" width="960" height="540"></canvas>
+
+      <div class="hud top-hud" aria-live="polite">
+        <div class="hud-block">
+          <span class="hud-label">分數</span>
+          <strong id="scoreValue">0</strong>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">連擊</span>
+          <strong id="comboValue">0</strong>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">生命</span>
+          <strong id="lifeValue">3</strong>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">時間</span>
+          <strong id="timeValue">60</strong>
+        </div>
+      </div>
+
+      <div id="messagePanel" class="message-panel">
+        <h1>酒吧接酒杯</h1>
+        <p>左右移動托盤，接住從吧台滑落的酒杯。</p>
+        <button id="startButton" type="button">開始</button>
+      </div>
+
+      <div class="controls" aria-label="操作按鈕">
+        <button id="leftButton" type="button" aria-label="向左">←</button>
+        <button id="pauseButton" type="button" aria-label="暫停">暫停</button>
+        <button id="rightButton" type="button" aria-label="向右">→</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="Source/app.js"></script>
+</body>
+</html>
