@@ -4,12 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>酒吧接酒杯</title>
-  <link rel="stylesheet" href="Assets/styles.css?v=20260712-info-slider-smooth2">
+  <link rel="stylesheet" href="Assets/styles.css?v=20260712-loading-tap-low1">
 </head>
 <body>
   <main class="game-shell">
     <section class="game-stage" aria-label="酒吧接酒杯小遊戲">
       <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+      <div id="loadingOverlay" class="loading-overlay is-black" aria-label="Loading">
+        <div class="loading-cover">
+          <img src="Assets/LoadingPage1.png" alt="">
+        </div>
+        <div class="loading-tap">Tap to continue</div>
+      </div>
 
       <div class="hud top-hud" aria-live="polite">
         <div class="hud-block">
@@ -75,6 +82,10 @@
             酒瓶 Collision
           </label>
           <label>
+            <input id="debugJukeboxCollision" type="checkbox">
+            點唱機 Collision
+          </label>
+          <label>
             <input id="debugInfiniteMode" type="checkbox">
             無限模式
           </label>
@@ -92,6 +103,6 @@
     </section>
   </main>
 
-  <script src="Source/app.js?v=20260712-info-slider-smooth2"></script>
+  <script src="Source/app.js?v=20260712-loading-tap-low1"></script>
 </body>
 </html>

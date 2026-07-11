@@ -2,6 +2,7 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
   const gameStage = document.querySelector(".game-stage");
+  const loadingOverlay = document.getElementById("loadingOverlay");
 
   const scoreValue = document.getElementById("scoreValue");
   const comboValue = document.getElementById("comboValue");
@@ -24,6 +25,7 @@
   const debugTrayCollision = document.getElementById("debugTrayCollision");
   const debugCatCollision = document.getElementById("debugCatCollision");
   const debugBottleCollision = document.getElementById("debugBottleCollision");
+  const debugJukeboxCollision = document.getElementById("debugJukeboxCollision");
   const debugInfiniteMode = document.getElementById("debugInfiniteMode");
   const debugInputArea = document.getElementById("debugInputArea");
   const debugReverseDistance = document.getElementById("debugReverseDistance");
@@ -31,9 +33,19 @@
   const backgroundImage = new Image();
   backgroundImage.src = "Assets/Background.png";
 
-  const bgm = new Audio("Assets/SE/霓虹木酒館.mp3");
-  bgm.loop = true;
-  bgm.volume = 0.58;
+  const bgmTracks = [
+    new Audio("Assets/SE/霓虹木酒館.mp3"),
+    new Audio("Assets/SE/像素酒館夜2.mp3"),
+    new Audio("Assets/SE/像素酒館夜3.mp3"),
+  ];
+  bgmTracks.forEach((track) => {
+    track.loop = true;
+    track.volume = 0.58;
+  });
+  let currentBgmIndex = 0;
+  let bgm = bgmTracks[currentBgmIndex];
+  const cardKeySound = new Audio("Assets/SE/cardkey.mp3");
+  cardKeySound.volume = 0.9;
 
   const catchSounds = [
     new Audio("Assets/SE/putting_a_cup1.mp3"),
@@ -203,11 +215,21 @@
   const MAX_LIVES = 3;
   const INFO_TRANSITION_MS = 360;
   const INFO_DRAG_THRESHOLD = 42;
+  const FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.3;
+  const JUKEBOX_BUTTON = { x: 38, y: 318, width: 54, height: 32 };
+  const JUKEBOX_CLICK_DRAG_THRESHOLD = 14;
+  const LOADING_BLACK_MS = 500;
+  const LOADING_COVER_FADE_MS = 1000;
+  const LOADING_TAP_FADE_MS = 500;
+  const LOADING_EXIT_MS = 500;
+  const HOLD_DIRECTION_DEAD_ZONE = 18;
+  const HOLD_FULL_SPEED_DISTANCE = 82;
   const keys = new Set();
   const debugState = {
     trayCollision: false,
     catCollision: false,
     bottleCollision: false,
+    jukeboxCollision: false,
     infiniteMode: false,
     inputArea: false,
   };
@@ -215,6 +237,7 @@
     active: false,
     pointerId: null,
     lastClientX: 0,
+    pointerX: 0,
     direction: 0,
     reverseDistance: 0,
     reverseSwitchDistance: 22,
@@ -225,6 +248,12 @@
     startClientX: 0,
     lastClientX: 0,
     target: null,
+  };
+  const jukeboxPress = {
+    active: false,
+    pointerId: null,
+    startClientX: 0,
+    startClientY: 0,
   };
   const lifeHeartImages = Array.from({ length: MAX_LIVES }, () => {
     const image = document.createElement("img");
@@ -254,6 +283,12 @@
   let gameOver = false;
   let mainLoopActive = false;
   let bgmEnabled = true;
+  let firstGameplayStart = true;
+  let bgmSwitchQueue = 0;
+  let bgmSwitchSoundPlaying = false;
+  let loadingPhase = "black";
+  let loadingTimer = null;
+  let loadingCompleted = false;
   let countdownActive = false;
   let countdownTime = 0;
   let infoPageIndex = 0;
@@ -273,7 +308,7 @@
     y: HEIGHT - 162,
     width: 176,
     height: 28,
-    offsetX: -68,
+    offsetX: -60,
     speed: 620,
     direction: -1,
     moving: false,
@@ -356,10 +391,14 @@
     draw();
     playSound(eventSounds.cupOpen);
     startVoiceLoopFadeIn();
-    try {
-      bgm.currentTime = 0;
-    } catch {
-      // Audio seeking can fail on some reload/restart timing; gameplay must continue.
+    if (firstGameplayStart) {
+      firstGameplayStart = false;
+    } else {
+      try {
+        bgm.currentTime = 0;
+      } catch {
+        // Audio seeking can fail on some reload/restart timing; gameplay must continue.
+      }
     }
     playBgm();
   }
@@ -378,8 +417,11 @@
     dragControl.active = false;
     dragControl.pointerId = null;
     dragControl.lastClientX = 0;
+    dragControl.pointerX = 0;
     dragControl.direction = 0;
     dragControl.reverseDistance = 0;
+    jukeboxPress.active = false;
+    jukeboxPress.pointerId = null;
   }
 
   function playBgm() {
@@ -387,6 +429,138 @@
     bgm.play().catch(() => {
       // Browsers may block audio until a direct user gesture is accepted.
     });
+  }
+
+  function clearLoadingTimer() {
+    if (loadingTimer !== null) {
+      window.clearTimeout(loadingTimer);
+      loadingTimer = null;
+    }
+  }
+
+  function startLoadingSequence() {
+    if (!loadingOverlay || loadingCompleted) return;
+    clearLoadingTimer();
+    loadingPhase = "black";
+    loadingOverlay.className = "loading-overlay is-black";
+    playBgm();
+    loadingTimer = window.setTimeout(() => {
+      startLoadingCoverFade(false);
+    }, LOADING_BLACK_MS);
+  }
+
+  function startLoadingCoverFade(skipFade) {
+    if (!loadingOverlay || loadingCompleted) return;
+    clearLoadingTimer();
+    playBgm();
+    loadingOverlay.classList.remove("is-black", "is-cover-fading", "is-cover-ready", "is-tap-fading", "is-tap-ready", "is-exiting");
+
+    if (skipFade) {
+      loadingOverlay.classList.add("is-cover-ready");
+      startLoadingTapFade();
+      return;
+    }
+
+    loadingPhase = "coverFade";
+    loadingOverlay.classList.add("is-cover-fading");
+    loadingTimer = window.setTimeout(() => {
+      loadingOverlay.classList.remove("is-cover-fading");
+      loadingOverlay.classList.add("is-cover-ready");
+      startLoadingTapFade();
+    }, LOADING_COVER_FADE_MS);
+  }
+
+  function startLoadingTapFade() {
+    if (!loadingOverlay || loadingCompleted) return;
+    clearLoadingTimer();
+    loadingPhase = "tapFade";
+    loadingOverlay.classList.add("is-tap-fading");
+    loadingTimer = window.setTimeout(() => {
+      loadingPhase = "tapReady";
+      loadingOverlay.classList.remove("is-tap-fading");
+      loadingOverlay.classList.add("is-tap-ready");
+    }, LOADING_TAP_FADE_MS);
+  }
+
+  function finishLoadingSequence() {
+    if (!loadingOverlay || loadingCompleted || loadingPhase !== "tapReady") return;
+    clearLoadingTimer();
+    loadingPhase = "exiting";
+    loadingOverlay.classList.remove("is-tap-fading", "is-tap-ready");
+    loadingOverlay.classList.add("is-exiting");
+    loadingTimer = window.setTimeout(() => {
+      loadingCompleted = true;
+      loadingPhase = "done";
+      loadingOverlay.classList.add("is-hidden");
+      clearLoadingTimer();
+    }, LOADING_EXIT_MS);
+  }
+
+  function handleLoadingPointer(event) {
+    if (loadingCompleted || !loadingOverlay || loadingOverlay.classList.contains("is-hidden")) return;
+    event.preventDefault();
+    playBgm();
+    if (loadingPhase === "black") {
+      startLoadingCoverFade(false);
+      return;
+    }
+    if (loadingPhase === "coverFade") {
+      startLoadingCoverFade(true);
+      return;
+    }
+    if (loadingPhase === "tapReady") {
+      finishLoadingSequence();
+    }
+  }
+
+  function switchToNextBgmTrack() {
+    const shouldResume = bgmEnabled && running && !paused && !gameOver;
+    try {
+      bgm.pause();
+      bgm.currentTime = 0;
+    } catch {
+      // Ignore audio state errors while swapping tracks.
+    }
+    currentBgmIndex = (currentBgmIndex + 1) % bgmTracks.length;
+    bgm = bgmTracks[currentBgmIndex];
+    try {
+      bgm.currentTime = 0;
+    } catch {
+      // Ignore audio state errors while swapping tracks.
+    }
+    if (shouldResume) playBgm();
+  }
+
+  function playQueuedBgmSwitch() {
+    if (bgmSwitchSoundPlaying || bgmSwitchQueue <= 0) return;
+    bgmSwitchQueue -= 1;
+    bgmSwitchSoundPlaying = true;
+
+    const finish = () => {
+      cardKeySound.removeEventListener("ended", finish);
+      bgmSwitchSoundPlaying = false;
+      switchToNextBgmTrack();
+      playQueuedBgmSwitch();
+    };
+
+    try {
+      cardKeySound.pause();
+      cardKeySound.currentTime = 0;
+      cardKeySound.addEventListener("ended", finish, { once: true });
+      const playPromise = cardKeySound.play();
+      if (playPromise) {
+        playPromise.catch(() => {
+          finish();
+        });
+      }
+    } catch {
+      finish();
+    }
+  }
+
+  function queueBgmSwitch() {
+    bgmSwitchQueue += 1;
+    playQueuedBgmSwitch();
   }
 
   function updateBgmButton() {
@@ -405,12 +579,31 @@
     return getCanvasPoint(event).y >= HEIGHT - 230;
   }
 
+  function isPointInsideRect(point, rect) {
+    return point.x >= rect.x &&
+      point.x <= rect.x + rect.width &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.height;
+  }
+
+  function isInJukeboxButton(event) {
+    return isPointInsideRect(getCanvasPoint(event), JUKEBOX_BUTTON);
+  }
+
   function getHoldDirection(event) {
     const point = getCanvasPoint(event);
-    const deadZone = 18;
-    if (point.x > tray.x + deadZone) return 1;
-    if (point.x < tray.x - deadZone) return -1;
+    if (point.x > tray.x + HOLD_DIRECTION_DEAD_ZONE) return 1;
+    if (point.x < tray.x - HOLD_DIRECTION_DEAD_ZONE) return -1;
     return 0;
+  }
+
+  function getHoldSpeedScale() {
+    if (!dragControl.active || dragControl.direction === 0) return 0;
+    const distanceInMoveDirection = (dragControl.pointerX - tray.x) * dragControl.direction;
+    if (distanceInMoveDirection <= HOLD_DIRECTION_DEAD_ZONE) return 0;
+    const range = HOLD_FULL_SPEED_DISTANCE - HOLD_DIRECTION_DEAD_ZONE;
+    const normalized = Math.min(1, (distanceInMoveDirection - HOLD_DIRECTION_DEAD_ZONE) / range);
+    return normalized * normalized;
   }
 
   function updateDragDirection(deltaX) {
@@ -429,6 +622,16 @@
       dragControl.reverseDistance = 0;
     }
     return dragControl.direction;
+  }
+
+  function startDragControl(event, direction = getHoldDirection(event)) {
+    dragControl.active = true;
+    dragControl.pointerId = event.pointerId;
+    dragControl.lastClientX = event.clientX;
+    dragControl.pointerX = getCanvasPoint(event).x;
+    dragControl.direction = direction;
+    dragControl.reverseDistance = 0;
+    gameStage.setPointerCapture(event.pointerId);
   }
 
   function playSound(sound) {
@@ -793,18 +996,28 @@
   function update(delta) {
     if (!running || paused) return;
 
-    let direction = dragControl.direction;
-    if (keys.has("ArrowLeft") || keys.has("a")) direction -= 1;
-    if (keys.has("ArrowRight") || keys.has("d")) direction += 1;
-    direction = Math.max(-1, Math.min(1, direction));
-    tray.x += direction * tray.speed * delta;
+    let keyboardDirection = 0;
+    if (keys.has("ArrowLeft") || keys.has("a")) keyboardDirection -= 1;
+    if (keys.has("ArrowRight") || keys.has("d")) keyboardDirection += 1;
+    keyboardDirection = Math.max(-1, Math.min(1, keyboardDirection));
+
+    let direction = keyboardDirection;
+    let speedScale = keyboardDirection !== 0 ? 1 : 0;
+    if (direction === 0 && dragControl.active) {
+      direction = dragControl.direction;
+      speedScale = getHoldSpeedScale();
+      if (speedScale <= 0.001) direction = 0;
+    }
+
+    const movementAmount = Math.abs(direction) * speedScale;
+    tray.x += direction * tray.speed * speedScale * delta;
     tray.x = Math.max(tray.width / 2 + 18, Math.min(WIDTH - tray.width / 2 - 18, tray.x));
-    tray.moving = direction !== 0;
+    tray.moving = movementAmount > 0;
     if (tray.moving) {
       tray.direction = direction > 0 ? 1 : -1;
-      tray.walkTime += delta * 9.5;
-      tray.dustTimer -= delta;
-      if (tray.dustTimer <= 0) {
+      tray.walkTime += delta * (3.2 + movementAmount * 6.3);
+      tray.dustTimer -= delta * movementAmount;
+      if (movementAmount > 0.22 && tray.dustTimer <= 0) {
         spawnRunDust();
         tray.dustTimer = 0.075;
       }
@@ -846,7 +1059,7 @@
     spawnTimer -= delta;
     const scorePressure = Math.min(1, score / 1500);
     const baseSpawnEvery = 1.08 - 0.46 * (1 - Math.pow(1 - scorePressure, 1.65));
-    const spawnEvery = timeLeft <= 10 ? baseSpawnEvery * 0.5 : baseSpawnEvery;
+    const spawnEvery = timeLeft <= 10 ? baseSpawnEvery / FINAL_TEN_SECONDS_SPAWN_MULTIPLIER : baseSpawnEvery;
     if (spawnTimer <= 0) {
       spawnGlass();
       spawnTimer = spawnEvery;
@@ -1598,6 +1811,17 @@
     ctx.restore();
   }
 
+  function drawJukeboxCollisionDebug() {
+    ctx.save();
+    ctx.strokeStyle = "#00d8ff";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([7, 5]);
+    ctx.strokeRect(JUKEBOX_BUTTON.x, JUKEBOX_BUTTON.y, JUKEBOX_BUTTON.width, JUKEBOX_BUTTON.height);
+    ctx.fillStyle = "rgba(0, 216, 255, 0.08)";
+    ctx.fillRect(JUKEBOX_BUTTON.x, JUKEBOX_BUTTON.y, JUKEBOX_BUTTON.width, JUKEBOX_BUTTON.height);
+    ctx.restore();
+  }
+
   function drawCountdown() {
     if (!countdownActive) return;
 
@@ -1621,6 +1845,39 @@
     ctx.restore();
   }
 
+  function drawFinalCountdown() {
+    if (!running || paused || countdownActive || timeLeft <= 0 || timeLeft > 3) return;
+
+    const value = Math.max(1, Math.ceil(timeLeft));
+    const progress = Math.max(0, Math.min(1, value - timeLeft));
+    const fadeIn = Math.min(1, progress / 0.22);
+    const fadeOut = Math.min(1, (1 - progress) / 0.28);
+    const alpha = Math.min(fadeIn, fadeOut) * 0.78;
+    if (alpha <= 0) return;
+
+    const growT = Math.min(1, progress / 0.5);
+    const growEase = 1 - Math.pow(1 - growT, 3);
+    const shrinkT = Math.max(0, (progress - 0.5) / 0.5);
+    const shrinkEase = shrinkT * shrinkT * (3 - 2 * shrinkT);
+    const scale = 0.72 + growEase * 0.56 - shrinkEase * 0.16;
+
+    ctx.save();
+    ctx.translate(WIDTH / 2, HEIGHT / 2 - 8);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "900 156px Microsoft JhengHei, sans-serif";
+    ctx.lineWidth = 10;
+    ctx.shadowColor = "rgba(255, 214, 112, 0.75)";
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = "rgba(37, 18, 9, 0.9)";
+    ctx.fillStyle = "#fff2b6";
+    ctx.strokeText(String(value), 0, 0);
+    ctx.fillText(String(value), 0, 0);
+    ctx.restore();
+  }
+
   function draw() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1636,9 +1893,11 @@
     drawCatchSparks();
     if (debugState.trayCollision) drawCollisionDebug();
     if (debugState.catCollision) drawCatCollisionDebug();
+    if (debugState.jukeboxCollision) drawJukeboxCollisionDebug();
     if (debugState.inputArea) drawInputAreaDebug();
     splashes.forEach(drawSplash);
     drawCountdown();
+    drawFinalCountdown();
 
     if (paused && running) drawPauseOverlay();
   }
@@ -1861,6 +2120,47 @@
     return true;
   }
 
+  function startJukeboxPress(event) {
+    if (!running || paused || gameOver || !isInJukeboxButton(event)) return false;
+    event.preventDefault();
+    jukeboxPress.active = true;
+    jukeboxPress.pointerId = event.pointerId;
+    jukeboxPress.startClientX = event.clientX;
+    jukeboxPress.startClientY = event.clientY;
+    gameStage.setPointerCapture(event.pointerId);
+    return true;
+  }
+
+  function updateJukeboxPress(event) {
+    if (!jukeboxPress.active || event.pointerId !== jukeboxPress.pointerId) return false;
+    event.preventDefault();
+    const deltaX = event.clientX - jukeboxPress.startClientX;
+    const deltaY = event.clientY - jukeboxPress.startClientY;
+    if (Math.hypot(deltaX, deltaY) < JUKEBOX_CLICK_DRAG_THRESHOLD) return true;
+
+    jukeboxPress.active = false;
+    jukeboxPress.pointerId = null;
+    const direction = Math.abs(deltaX) >= 3 ? (deltaX > 0 ? 1 : -1) : getHoldDirection(event);
+    startDragControl(event, direction);
+    return true;
+  }
+
+  function finishJukeboxPress(event, canceled = false) {
+    if (!jukeboxPress.active || event.pointerId !== jukeboxPress.pointerId) return false;
+    event.preventDefault();
+    jukeboxPress.active = false;
+    jukeboxPress.pointerId = null;
+    if (gameStage.hasPointerCapture(event.pointerId)) {
+      gameStage.releasePointerCapture(event.pointerId);
+    }
+    if (!canceled) queueBgmSwitch();
+    return true;
+  }
+
+  if (loadingOverlay) {
+    loadingOverlay.addEventListener("pointerdown", handleLoadingPointer);
+  }
+
   startButton.addEventListener("click", resetGame);
   infoPrevButton.addEventListener("click", (event) => {
     event.preventDefault();
@@ -1928,6 +2228,11 @@
     draw();
   });
 
+  debugJukeboxCollision.addEventListener("change", () => {
+    debugState.jukeboxCollision = debugJukeboxCollision.checked;
+    draw();
+  });
+
   debugInfiniteMode.addEventListener("change", () => {
     debugState.infiniteMode = debugInfiniteMode.checked;
     draw();
@@ -1955,20 +2260,18 @@
   gameStage.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".debug-panel, button, input, label")) return;
     if (handlePauseInfoPointerDown(event)) return;
+    if (startJukeboxPress(event)) return;
     if (!isInDragControlArea(event)) return;
     event.preventDefault();
-    dragControl.active = true;
-    dragControl.pointerId = event.pointerId;
-    dragControl.lastClientX = event.clientX;
-    dragControl.direction = getHoldDirection(event);
-    dragControl.reverseDistance = 0;
-    gameStage.setPointerCapture(event.pointerId);
+    startDragControl(event);
   });
 
   gameStage.addEventListener("pointermove", (event) => {
     if (updateInfoDrag(event)) return;
+    if (updateJukeboxPress(event)) return;
     if (!dragControl.active || event.pointerId !== dragControl.pointerId) return;
     event.preventDefault();
+    dragControl.pointerX = getCanvasPoint(event).x;
     const deltaX = event.clientX - dragControl.lastClientX;
     if (Math.abs(deltaX) >= 3) {
       updateDragDirection(deltaX);
@@ -1982,6 +2285,7 @@
     if (event.pointerId !== dragControl.pointerId) return;
     dragControl.active = false;
     dragControl.pointerId = null;
+    dragControl.pointerX = 0;
     dragControl.direction = 0;
     dragControl.reverseDistance = 0;
     if (gameStage.hasPointerCapture(event.pointerId)) {
@@ -1991,16 +2295,21 @@
 
   gameStage.addEventListener("pointerup", (event) => {
     if (finishInfoDrag(event)) return;
+    if (finishJukeboxPress(event)) return;
     stopDragControl(event);
   });
   gameStage.addEventListener("pointercancel", (event) => {
     if (finishInfoDrag(event)) return;
+    if (finishJukeboxPress(event, true)) return;
     stopDragControl(event);
   });
   gameStage.addEventListener("lostpointercapture", () => {
     resetInfoDrag();
+    jukeboxPress.active = false;
+    jukeboxPress.pointerId = null;
     dragControl.active = false;
     dragControl.pointerId = null;
+    dragControl.pointerX = 0;
     dragControl.direction = 0;
     dragControl.reverseDistance = 0;
   });
@@ -2028,5 +2337,6 @@
   updateInfoPageDom();
   draw();
   startMainLoop();
+  startLoadingSequence();
   backgroundImage.addEventListener("load", draw);
 })();

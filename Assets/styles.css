@@ -58,6 +58,141 @@ button {
   touch-action: none;
 }
 
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.loading-overlay.is-hidden {
+  display: none;
+}
+
+.loading-cover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max-content;
+  max-width: 90%;
+  height: min(82%, 620px);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.985);
+  transition:
+    opacity 1000ms ease,
+    transform 1000ms cubic-bezier(0.22, 0.8, 0.28, 1),
+    filter 120ms ease;
+}
+
+.loading-cover img {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 90vw;
+  object-fit: contain;
+}
+
+.loading-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, #000 0%, rgba(0, 0, 0, 0.72) 5%, transparent 18%, transparent 82%, rgba(0, 0, 0, 0.72) 95%, #000 100%),
+    linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.72) 6%, transparent 20%, transparent 80%, rgba(0, 0, 0, 0.72) 94%, #000 100%);
+}
+
+.loading-overlay.is-cover-fading .loading-cover,
+.loading-overlay.is-cover-ready .loading-cover,
+.loading-overlay.is-tap-fading .loading-cover,
+.loading-overlay.is-tap-ready .loading-cover {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.loading-tap {
+  position: absolute;
+  top: min(91%, calc(50% + 335px));
+  left: 50%;
+  opacity: 0;
+  transform: translate(-50%, 0);
+  color: #fff7dc;
+  font-size: clamp(18px, 2.7vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0;
+  text-shadow:
+    0 0 12px rgba(255, 214, 112, 0.62),
+    0 3px 8px rgba(0, 0, 0, 0.85);
+  transition: opacity 500ms ease;
+  white-space: nowrap;
+}
+
+.loading-overlay.is-tap-fading .loading-tap,
+.loading-overlay.is-tap-ready .loading-tap {
+  opacity: 1;
+}
+
+.loading-overlay.is-tap-ready .loading-tap {
+  animation: loading-tap-breathe 1400ms ease-in-out infinite;
+}
+
+.loading-overlay.is-exiting {
+  animation: loading-overlay-fade 500ms ease forwards;
+}
+
+.loading-overlay.is-exiting .loading-cover {
+  animation: loading-cover-flash-out 500ms ease forwards;
+}
+
+.loading-overlay.is-exiting .loading-tap {
+  opacity: 0;
+  transition-duration: 180ms;
+}
+
+@keyframes loading-tap-breathe {
+  0%,
+  100% {
+    transform: translate(-50%, 0) scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: translate(-50%, -4px) scale(1.045);
+    filter: brightness(1.2);
+  }
+}
+
+@keyframes loading-cover-flash-out {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  14% {
+    opacity: 1;
+    filter: brightness(1.85);
+    transform: translate(-50%, -50%) scale(1.012);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(0.6);
+    transform: translate(-50%, -50%) scale(0.99);
+  }
+}
+
+@keyframes loading-overlay-fade {
+  0% {
+    background: #000;
+  }
+  100% {
+    background: rgba(0, 0, 0, 0);
+  }
+}
+
 .hud {
   position: absolute;
   left: 18px;
