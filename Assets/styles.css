@@ -46,6 +46,8 @@ button {
   box-shadow: 0 28px 70px var(--shadow);
   overflow: hidden;
   background: #1b0d0c;
+  touch-action: none;
+  user-select: none;
 }
 
 #gameCanvas {
@@ -53,6 +55,7 @@ button {
   width: 100%;
   height: 100%;
   image-rendering: auto;
+  touch-action: none;
 }
 
 .hud {
@@ -115,9 +118,19 @@ button {
 
 .message-panel p {
   margin: 0;
-  max-width: 560px;
+  max-width: min(1120px, 92vw);
   font-size: clamp(16px, 2.3vw, 24px);
   line-height: 1.5;
+  white-space: pre-line;
+}
+
+.fail-reason {
+  display: block;
+  margin-bottom: 10px;
+  font-size: clamp(20px, 3.6vw, 52px);
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .message-panel button,
@@ -166,6 +179,55 @@ button {
   left: 33.5%;
   top: 2.1%;
   min-width: 78px;
+}
+
+#bgmButton {
+  left: 40.2%;
+  top: 2.1%;
+  min-width: 96px;
+}
+
+.debug-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 8;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.debug-toggle,
+.debug-options {
+  color: #fff7dc;
+  background: rgba(24, 12, 9, 0.82);
+  border: 1px solid rgba(255, 247, 220, 0.45);
+}
+
+.debug-toggle {
+  min-width: 70px;
+  min-height: 34px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.debug-options {
+  display: grid;
+  gap: 8px;
+  min-width: 150px;
+  padding: 10px;
+  font-size: 13px;
+}
+
+.debug-options[hidden] {
+  display: none;
+}
+
+.debug-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 @media (max-width: 680px) {

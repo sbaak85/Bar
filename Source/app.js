@@ -1,9 +1,11 @@
 (() => {
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
+  const gameStage = document.querySelector(".game-stage");
 
   const scoreValue = document.getElementById("scoreValue");
   const comboValue = document.getElementById("comboValue");
+  const catchValue = document.getElementById("catchValue");
   const lifeValue = document.getElementById("lifeValue");
   const timeValue = document.getElementById("timeValue");
   const messagePanel = document.getElementById("messagePanel");
@@ -11,6 +13,11 @@
   const leftButton = document.getElementById("leftButton");
   const rightButton = document.getElementById("rightButton");
   const pauseButton = document.getElementById("pauseButton");
+  const bgmButton = document.getElementById("bgmButton");
+  const debugToggleButton = document.getElementById("debugToggleButton");
+  const debugOptions = document.getElementById("debugOptions");
+  const debugTrayCollision = document.getElementById("debugTrayCollision");
+  const debugInputArea = document.getElementById("debugInputArea");
   const backgroundImage = new Image();
   backgroundImage.src = "Assets/Background.png";
 
@@ -46,6 +53,35 @@
   };
 
   const suzyImage = loadImage("Assets/Yume/Suzy.png");
+  const bitmapFontImages = {
+    gold: loadImage("Assets/Font/CHFont2.png"),
+    copper: loadImage("Assets/Font/CHFont3.png"),
+    green: loadImage("Assets/Font/CHFont4.png"),
+    blue: loadImage("Assets/Font/CHFont5.png"),
+    red: loadImage("Assets/Font/CHFont6.png"),
+  };
+  const bitmapFontMetrics = {
+    lineHeight: 107,
+    chars: {
+      "0": { x: 2, y: 2, width: 100, height: 107, xadvance: 103 },
+      "1": { x: 104, y: 2, width: 66, height: 107, xadvance: 69 },
+      "2": { x: 172, y: 2, width: 90, height: 107, xadvance: 93 },
+      "3": { x: 264, y: 2, width: 87, height: 107, xadvance: 90 },
+      "4": { x: 353, y: 2, width: 96, height: 107, xadvance: 99 },
+      "5": { x: 451, y: 2, width: 89, height: 107, xadvance: 92 },
+      "6": { x: 542, y: 2, width: 96, height: 107, xadvance: 99 },
+      "7": { x: 640, y: 2, width: 90, height: 107, xadvance: 93 },
+      "8": { x: 732, y: 2, width: 91, height: 107, xadvance: 94 },
+      "9": { x: 825, y: 2, width: 92, height: 107, xadvance: 95 },
+      "+": { x: 919, y: 2, width: 101, height: 107, xadvance: 104 },
+      "-": { x: 1022, y: 2, width: 104, height: 107, xadvance: 107 },
+      "x": { x: 1128, y: 2, width: 102, height: 107, xadvance: 105 },
+      "/": { x: 1232, y: 2, width: 74, height: 107, xadvance: 77 },
+      "=": { x: 1308, y: 2, width: 102, height: 107, xadvance: 105 },
+      ",": { x: 1412, y: 2, width: 41, height: 107, xadvance: 44 },
+      ".": { x: 1455, y: 2, width: 39, height: 107, xadvance: 42 },
+    },
+  };
 
   const yumeCrops = {
     body: { x: 200, y: 182, width: 1577, height: 1599 },
@@ -78,9 +114,20 @@
   };
   const ROUND_SECONDS = 60;
   const keys = new Set();
+  const debugState = {
+    trayCollision: false,
+    inputArea: false,
+  };
+  const dragControl = {
+    active: false,
+    pointerId: null,
+    lastClientX: 0,
+    direction: 0,
+  };
 
   let score = 0;
   let combo = 0;
+  let catchCount = 0;
   let lives = 3;
   let timeLeft = ROUND_SECONDS;
   let spawnTimer = 0;
@@ -88,8 +135,12 @@
   let running = false;
   let paused = false;
   let gameOver = false;
+  let bgmEnabled = true;
+  let countdownActive = false;
+  let countdownTime = 0;
   let glasses = [];
   let splashes = [];
+  let dustParticles = [];
 
   const tray = {
     x: WIDTH / 2,
@@ -102,20 +153,30 @@
     moving: false,
     walkTime: 0,
     handSway: 0,
+    dustTimer: 0,
   };
 
   const glassTypes = [
-    { name: "10", image: loadImage("Assets/wine bottle/cropped/10.png"), aspect: 212 / 500, color: "#d89135", points: 10 },
-    { name: "12", image: loadImage("Assets/wine bottle/cropped/12.png"), aspect: 217 / 500, color: "#d8a24e", points: 12 },
-    { name: "15", image: loadImage("Assets/wine bottle/cropped/15.png"), aspect: 300 / 370, color: "#c05f4a", points: 15 },
-    { name: "18", image: loadImage("Assets/wine bottle/cropped/18.png"), aspect: 251 / 500, color: "#8e6b42", points: 18 },
-    { name: "20", image: loadImage("Assets/wine bottle/cropped/20.png"), aspect: 232 / 500, color: "#7f8a5b", points: 20 },
-    { name: "25", image: loadImage("Assets/wine bottle/cropped/25.png"), aspect: 259 / 500, color: "#b0443f", points: 25 },
+    { name: "10", image: loadImage("Assets/wine bottle/cropped/10.png"), aspect: 212 / 500, color: "#d89135", font: "copper", points: 10 },
+    { name: "12", image: loadImage("Assets/wine bottle/cropped/12.png"), aspect: 217 / 500, color: "#d8a24e", font: "copper", points: 12 },
+    { name: "15", image: loadImage("Assets/wine bottle/cropped/15.png"), aspect: 300 / 370, color: "#c05f4a", font: "green", points: 15 },
+    { name: "18", image: loadImage("Assets/wine bottle/cropped/18.png"), aspect: 251 / 500, color: "#8e6b42", font: "blue", points: 18 },
+    { name: "20", image: loadImage("Assets/wine bottle/cropped/20.png"), aspect: 232 / 500, color: "#7f8a5b", font: "red", points: 20 },
+    { name: "25", image: loadImage("Assets/wine bottle/cropped/25.png"), aspect: 259 / 500, color: "#b0443f", font: "gold", points: 25 },
+  ];
+
+  const failMessages = [
+    "秀智因為肚子太餓暴衝砸毀了你的店",
+    "秀智跳上吧檯打翻了所有酒瓶",
+    "秀智追著酒杯跑把店裡撞成一團亂",
+    "秀智把托盤當貓窩壓垮了營業",
+    "秀智突然撒嬌害你漏接了整排酒瓶",
   ];
 
   function resetGame() {
     score = 0;
     combo = 0;
+    catchCount = 0;
     lives = 3;
     timeLeft = ROUND_SECONDS;
     spawnTimer = 0;
@@ -126,9 +187,13 @@
     tray.moving = false;
     tray.walkTime = 0;
     tray.handSway = 0;
+    tray.dustTimer = 0;
+    dustParticles = [];
     gameOver = false;
     paused = false;
     running = true;
+    countdownActive = true;
+    countdownTime = 3;
     lastTime = performance.now();
     updateHud();
     messagePanel.classList.add("is-hidden");
@@ -139,9 +204,34 @@
   }
 
   function playBgm() {
+    if (!bgmEnabled) return;
     bgm.play().catch(() => {
       // Browsers may block audio until a direct user gesture is accepted.
     });
+  }
+
+  function updateBgmButton() {
+    bgmButton.textContent = bgmEnabled ? "BGM OFF" : "BGM ON";
+  }
+
+  function getCanvasPoint(event) {
+    const rect = gameStage.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * WIDTH,
+      y: ((event.clientY - rect.top) / rect.height) * HEIGHT,
+    };
+  }
+
+  function isInDragControlArea(event) {
+    return getCanvasPoint(event).y >= HEIGHT - 230;
+  }
+
+  function getHoldDirection(event) {
+    const point = getCanvasPoint(event);
+    const deadZone = 18;
+    if (point.x > tray.x + deadZone) return 1;
+    if (point.x < tray.x - deadZone) return -1;
+    return 0;
   }
 
   function playCatchSound() {
@@ -170,15 +260,26 @@
   function updateHud() {
     scoreValue.textContent = String(score);
     comboValue.textContent = String(combo);
+    catchValue.textContent = String(catchCount);
     lifeValue.textContent = String(lives);
     timeValue.textContent = String(Math.max(0, Math.ceil(timeLeft)));
   }
 
-  function showMessage(title, text, buttonText) {
+  function showMessage(title, text, buttonText, mode = "") {
     messagePanel.querySelector("h1").textContent = title;
-    messagePanel.querySelector("p").textContent = text;
+    const messageText = messagePanel.querySelector("p");
+    if (mode === "fail") {
+      const [reason, scoreText] = text.split("\n");
+      messageText.innerHTML = `<span class="fail-reason">${reason}</span>${scoreText}`;
+    } else {
+      messageText.textContent = text;
+    }
     startButton.textContent = buttonText;
     messagePanel.classList.remove("is-hidden");
+  }
+
+  function getFailMessage() {
+    return failMessages[Math.floor(Math.random() * failMessages.length)];
   }
 
   function spawnGlass() {
@@ -211,12 +312,13 @@
     suzy.bounceTime = 0;
   }
 
-  function addSplash(x, y, color, text) {
+  function addSplash(x, y, color, text, font = null) {
     splashes.push({
       x,
       y,
       color,
       text,
+      font,
       age: 0,
       life: 0.7,
     });
@@ -225,25 +327,43 @@
   function update(delta) {
     if (!running || paused) return;
 
-    timeLeft -= delta;
-    if (timeLeft <= 0) {
-      endGame("時間到", `你接到了 ${score} 分的酒杯。`, "再玩一次");
-      return;
-    }
-
-    let direction = 0;
+    let direction = dragControl.direction;
     if (keys.has("ArrowLeft") || keys.has("a")) direction -= 1;
     if (keys.has("ArrowRight") || keys.has("d")) direction += 1;
+    direction = Math.max(-1, Math.min(1, direction));
     tray.x += direction * tray.speed * delta;
     tray.x = Math.max(tray.width / 2 + 18, Math.min(WIDTH - tray.width / 2 - 18, tray.x));
     tray.moving = direction !== 0;
     if (tray.moving) {
       tray.direction = direction > 0 ? 1 : -1;
       tray.walkTime += delta * 9.5;
+      tray.dustTimer -= delta;
+      if (tray.dustTimer <= 0) {
+        spawnRunDust();
+        tray.dustTimer = 0.075;
+      }
     } else {
       tray.walkTime = 0;
+      tray.dustTimer = 0;
     }
     tray.handSway += ((tray.moving ? Math.sin(tray.walkTime) : 0) - tray.handSway) * Math.min(1, delta * 14);
+    updateRunDust(delta);
+
+    if (countdownActive) {
+      countdownTime -= delta;
+      if (countdownTime <= 0) {
+        countdownActive = false;
+        countdownTime = 0;
+        lastTime = performance.now();
+      }
+      return;
+    }
+
+    timeLeft -= delta;
+    if (timeLeft <= 0) {
+      endGame("時間到", `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次");
+      return;
+    }
 
     spawnTimer -= delta;
     const baseSpawnEvery = Math.max(0.42, 1.08 - score / 900);
@@ -271,9 +391,11 @@
 
       if (caught) {
         combo += 1;
-        score += glass.type.points + Math.min(combo * 2, 80);
+        catchCount += 1;
+        const earnedPoints = glass.type.points + Math.min(combo * 2, 80);
+        score += earnedPoints;
         playCatchSound();
-        addSplash(glass.x, trayTop - 10, glass.type.color, `+${glass.type.points}`);
+        addSplash(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
         glasses.splice(i, 1);
         continue;
       }
@@ -285,7 +407,7 @@
         addSplash(glass.x, HEIGHT - 44, "#ffffff", "MISS");
         glasses.splice(i, 1);
         if (lives <= 0) {
-          endGame("收攤", `你接到了 ${score} 分的酒杯。`, "再玩一次");
+          endGame("收攤", `${getFailMessage()}\n你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次", "fail");
           return;
         }
       }
@@ -303,12 +425,13 @@
     updateHud();
   }
 
-  function endGame(title, text, buttonText) {
+  function endGame(title, text, buttonText, mode = "") {
     running = false;
     gameOver = true;
+    countdownActive = false;
     bgm.pause();
     updateHud();
-    showMessage(title, text, buttonText);
+    showMessage(title, text, buttonText, mode);
   }
 
   function drawBackground() {
@@ -433,6 +556,41 @@
     return tray.x - tray.offsetX * tray.direction;
   }
 
+  function getFootBaseY() {
+    return HEIGHT - 48;
+  }
+
+  function spawnRunDust() {
+    const facing = tray.direction;
+    const footX = tray.x + (-facing * (26 + Math.random() * 14));
+    const footY = getFootBaseY() + 12 + Math.random() * 8;
+    const count = 2 + Math.floor(Math.random() * 3);
+
+    for (let i = 0; i < count; i += 1) {
+      dustParticles.push({
+        x: footX + (-8 + Math.random() * 16),
+        y: footY + (-3 + Math.random() * 5),
+        vx: -facing * (18 + Math.random() * 26) + (-8 + Math.random() * 16),
+        vy: -(10 + Math.random() * 18),
+        radius: 2.2 + Math.random() * 3.6,
+        age: 0,
+        life: 0.32 + Math.random() * 0.28,
+      });
+    }
+  }
+
+  function updateRunDust(delta) {
+    for (let i = dustParticles.length - 1; i >= 0; i -= 1) {
+      const dust = dustParticles[i];
+      dust.age += delta;
+      dust.x += dust.vx * delta;
+      dust.y += dust.vy * delta;
+      dust.vx *= 0.985;
+      dust.vy -= 8 * delta;
+      if (dust.age >= dust.life) dustParticles.splice(i, 1);
+    }
+  }
+
   function drawYumePart(partName, x, y, width, rotation, pivotX = 0.5, pivotY = 0.5) {
     const image = yumeParts[partName];
     const crop = yumeCrops[partName];
@@ -454,6 +612,27 @@
       height
     );
     ctx.restore();
+  }
+
+  function drawRunDust() {
+    dustParticles.forEach((dust) => {
+      const t = dust.age / dust.life;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      ctx.fillStyle = "rgba(202, 185, 154, 0.72)";
+      ctx.beginPath();
+      ctx.ellipse(
+        dust.x,
+        dust.y,
+        dust.radius * (1 + t * 1.8),
+        dust.radius * (0.62 + t * 0.4),
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.restore();
+    });
   }
 
   function drawTray() {
@@ -512,10 +691,87 @@
     const t = splash.age / splash.life;
     ctx.save();
     ctx.globalAlpha = 1 - t;
-    ctx.fillStyle = splash.color;
-    ctx.font = "700 28px Microsoft JhengHei, sans-serif";
+    if (splash.font) {
+      drawBitmapText(splash.text, splash.x, splash.y - t * 42, splash.font, 0.34);
+    } else {
+      ctx.fillStyle = splash.color;
+      ctx.font = "700 28px Microsoft JhengHei, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(splash.text, splash.x, splash.y - t * 42);
+    }
+    ctx.restore();
+  }
+
+  function drawBitmapText(text, centerX, baselineY, fontName, scale) {
+    const image = bitmapFontImages[fontName];
+    if (!image || !image.complete || image.naturalWidth === 0) return;
+
+    let totalWidth = 0;
+    for (const char of text) {
+      const glyph = bitmapFontMetrics.chars[char];
+      if (glyph) totalWidth += glyph.xadvance * scale;
+    }
+
+    let cursorX = centerX - totalWidth / 2;
+    const topY = baselineY - bitmapFontMetrics.lineHeight * scale;
+    for (const char of text) {
+      const glyph = bitmapFontMetrics.chars[char];
+      if (!glyph) continue;
+      ctx.drawImage(
+        image,
+        glyph.x,
+        glyph.y,
+        glyph.width,
+        glyph.height,
+        cursorX,
+        topY,
+        glyph.width * scale,
+        glyph.height * scale
+      );
+      cursorX += glyph.xadvance * scale;
+    }
+  }
+
+  function drawInputAreaDebug() {
+    const top = HEIGHT - 230;
+    ctx.save();
+    ctx.strokeStyle = "#44aaff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 7]);
+    ctx.strokeRect(0, top, WIDTH, HEIGHT - top);
+    ctx.fillStyle = "rgba(68, 170, 255, 0.08)";
+    ctx.fillRect(0, top, WIDTH, HEIGHT - top);
+
+    ctx.strokeStyle = "#ffef5a";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(tray.x, top);
+    ctx.lineTo(tray.x, HEIGHT);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCountdown() {
+    if (!countdownActive) return;
+
+    const value = Math.max(1, Math.ceil(countdownTime));
+    const progress = countdownTime - Math.floor(countdownTime);
+    const scale = 1 + (1 - progress) * 0.18;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.26)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.translate(WIDTH / 2, HEIGHT / 2);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#fff7dc";
+    ctx.strokeStyle = "#2b1810";
+    ctx.lineWidth = 8;
+    ctx.font = "800 118px Microsoft JhengHei, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(splash.text, splash.x, splash.y - t * 42);
+    ctx.textBaseline = "middle";
+    ctx.strokeText(String(value), 0, 0);
+    ctx.fillText(String(value), 0, 0);
     ctx.restore();
   }
 
@@ -527,8 +783,12 @@
     drawBackground();
     drawSuzy();
     glasses.forEach(drawGlass);
+    drawRunDust();
     drawTray();
+    if (debugState.trayCollision) drawCollisionDebug();
+    if (debugState.inputArea) drawInputAreaDebug();
     splashes.forEach(drawSplash);
+    drawCountdown();
 
     if (paused && running) {
       ctx.fillStyle = "rgba(0,0,0,0.38)";
@@ -580,8 +840,74 @@
     draw();
   });
 
+  bgmButton.addEventListener("click", () => {
+    bgmEnabled = !bgmEnabled;
+    updateBgmButton();
+    if (!bgmEnabled) {
+      bgm.pause();
+      return;
+    }
+    if (running && !paused && !gameOver) playBgm();
+  });
+
+  debugToggleButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    debugOptions.hidden = !debugOptions.hidden;
+  });
+
+  debugTrayCollision.addEventListener("change", () => {
+    debugState.trayCollision = debugTrayCollision.checked;
+    draw();
+  });
+
+  debugInputArea.addEventListener("change", () => {
+    debugState.inputArea = debugInputArea.checked;
+    draw();
+  });
+
   setButtonKey(leftButton, "ArrowLeft");
   setButtonKey(rightButton, "ArrowRight");
+
+  gameStage.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".debug-panel, button, input, label")) return;
+    if (!isInDragControlArea(event)) return;
+    event.preventDefault();
+    dragControl.active = true;
+    dragControl.pointerId = event.pointerId;
+    dragControl.lastClientX = event.clientX;
+    dragControl.direction = getHoldDirection(event);
+    gameStage.setPointerCapture(event.pointerId);
+  });
+
+  gameStage.addEventListener("pointermove", (event) => {
+    if (!dragControl.active || event.pointerId !== dragControl.pointerId) return;
+    event.preventDefault();
+    const deltaX = event.clientX - dragControl.lastClientX;
+    if (Math.abs(deltaX) >= 3) {
+      dragControl.direction = deltaX > 0 ? 1 : -1;
+      dragControl.lastClientX = event.clientX;
+    } else if (dragControl.direction === 0) {
+      dragControl.direction = getHoldDirection(event);
+    }
+  });
+
+  function stopDragControl(event) {
+    if (event.pointerId !== dragControl.pointerId) return;
+    dragControl.active = false;
+    dragControl.pointerId = null;
+    dragControl.direction = 0;
+    if (gameStage.hasPointerCapture(event.pointerId)) {
+      gameStage.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  gameStage.addEventListener("pointerup", stopDragControl);
+  gameStage.addEventListener("pointercancel", stopDragControl);
+  gameStage.addEventListener("lostpointercapture", () => {
+    dragControl.active = false;
+    dragControl.pointerId = null;
+    dragControl.direction = 0;
+  });
 
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
@@ -601,6 +927,7 @@
     keys.delete(key === "arrowleft" || key === "arrowright" ? event.key : key);
   });
 
+  updateBgmButton();
   draw();
   backgroundImage.addEventListener("load", draw);
 })();
