@@ -26,7 +26,7 @@
         </div>
         <div class="hud-block">
           <span class="hud-label">生命</span>
-          <strong id="lifeValue">3</strong>
+          <strong id="lifeValue" class="life-hearts" aria-label="生命 3"></strong>
         </div>
         <div class="hud-block">
           <span class="hud-label">時間</span>
@@ -41,10 +41,14 @@
       </div>
 
       <div class="controls" aria-label="操作按鈕">
-        <button id="leftButton" type="button" aria-label="向左">←</button>
+        <button id="leftButton" type="button" aria-label="向左">
+          <img src="Assets/Left_Arr.png" alt="">
+        </button>
         <button id="pauseButton" type="button" aria-label="暫停">暫停</button>
         <button id="bgmButton" type="button" aria-label="切換背景音樂">BGM OFF</button>
-        <button id="rightButton" type="button" aria-label="向右">→</button>
+        <button id="rightButton" type="button" aria-label="向右">
+          <img src="Assets/Right_Arr.png" alt="">
+        </button>
       </div>
 
       <div class="debug-panel">
@@ -55,9 +59,26 @@
             托盤 Collision
           </label>
           <label>
+            <input id="debugCatCollision" type="checkbox">
+            貓 Collision
+          </label>
+          <label>
+            <input id="debugBottleCollision" type="checkbox">
+            酒瓶 Collision
+          </label>
+          <label>
+            <input id="debugInfiniteMode" type="checkbox">
+            無限模式
+          </label>
+          <label>
             <input id="debugInputArea" type="checkbox">
             輸入區 / 中線
           </label>
+          <div class="debug-number-row">
+            <span>reverseSwitchDistance</span>
+            <input id="debugReverseDistance" type="number" min="0" step="1" value="22">
+            <button id="debugReverseDistanceApply" type="button">OK</button>
+          </div>
         </div>
       </div>
     </section>
