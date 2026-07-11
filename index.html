@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>酒吧接酒杯</title>
-  <link rel="stylesheet" href="Assets/styles.css">
+  <link rel="stylesheet" href="Assets/styles.css?v=20260712-info-slider-smooth2">
 </head>
 <body>
   <main class="game-shell">
@@ -34,9 +34,17 @@
         </div>
       </div>
 
-      <div id="messagePanel" class="message-panel">
-        <h1>酒吧接酒杯</h1>
-        <p>左右移動托盤，接住從吧台滑落的酒杯。</p>
+      <div id="messagePanel" class="message-panel is-info">
+        <div id="infoSlider" class="info-slider" aria-label="遊戲說明">
+          <button id="infoPrevButton" class="info-arrow info-arrow-left" type="button" aria-label="上一頁"></button>
+          <div id="infoPageFrame" class="info-page-frame">
+            <img id="infoCurrentImage" class="info-page info-page-current" src="Assets/Info_Page1.png" alt="">
+            <img id="infoNextImage" class="info-page info-page-next" src="Assets/Info_Page2.png" alt="">
+          </div>
+          <button id="infoNextButton" class="info-arrow info-arrow-right" type="button" aria-label="下一頁"></button>
+        </div>
+        <h1></h1>
+        <p></p>
         <button id="startButton" type="button">開始</button>
       </div>
 
@@ -84,6 +92,6 @@
     </section>
   </main>
 
-  <script src="Source/app.js"></script>
+  <script src="Source/app.js?v=20260712-info-slider-smooth2"></script>
 </body>
 </html>

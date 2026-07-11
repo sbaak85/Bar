@@ -10,6 +10,11 @@
   const timeValue = document.getElementById("timeValue");
   const messagePanel = document.getElementById("messagePanel");
   const startButton = document.getElementById("startButton");
+  const infoPageFrame = document.getElementById("infoPageFrame");
+  const infoCurrentImage = document.getElementById("infoCurrentImage");
+  const infoNextImage = document.getElementById("infoNextImage");
+  const infoPrevButton = document.getElementById("infoPrevButton");
+  const infoNextButton = document.getElementById("infoNextButton");
   const leftButton = document.getElementById("leftButton");
   const rightButton = document.getElementById("rightButton");
   const pauseButton = document.getElementById("pauseButton");
@@ -54,12 +59,23 @@
     finalCountdown: new Audio("Assets/SE/3210.mp3"),
     cupOpen: new Audio("Assets/SE/杯打開.mp3"),
     cupClose: new Audio("Assets/SE/杯關閉.mp3"),
+    heal: new Audio("Assets/SE/回血.mp3"),
   };
   eventSounds.coin.volume = 0.9;
   eventSounds.applause.volume = 0.9;
   eventSounds.finalCountdown.volume = 0.9;
   eventSounds.cupOpen.volume = 0.9;
   eventSounds.cupClose.volume = 0.9;
+  eventSounds.heal.volume = 0.9;
+
+  const catDeflectSounds = [
+    new Audio("Assets/SE/平打.mp3"),
+    new Audio("Assets/SE/劍打.mp3"),
+    new Audio("Assets/SE/piling_dishes.mp3"),
+  ];
+  catDeflectSounds.forEach((sound) => {
+    sound.volume = 0.6;
+  });
 
   const voiceLoop = new Audio("Assets/SE/人聲.mp3");
   voiceLoop.loop = true;
@@ -77,6 +93,10 @@
   const suzyImage = loadImage("Assets/Yume/Suzy.png");
   const suzySleepImage = loadImage("Assets/Yume/Suzy_sleep.png");
   const angerImage = loadImage("Assets/anger.png");
+  const lifePopupImage = loadImage("Assets/+life.png");
+  const missPopupImage = loadImage("Assets/Font/Miss.png");
+  const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png"];
+  const infoPageImages = infoPageSources.map(loadImage);
   const cat2Parts = {
     body: loadImage("Assets/Yume/Cat2.png"),
     tail: loadImage("Assets/Yume/Tail.png"),
@@ -180,6 +200,9 @@
     y: 260 * (BASE_HEIGHT / canvas.height),
   };
   const ROUND_SECONDS = 60;
+  const MAX_LIVES = 3;
+  const INFO_TRANSITION_MS = 360;
+  const INFO_DRAG_THRESHOLD = 42;
   const keys = new Set();
   const debugState = {
     trayCollision: false,
@@ -196,30 +219,53 @@
     reverseDistance: 0,
     reverseSwitchDistance: 22,
   };
+  const infoDrag = {
+    active: false,
+    pointerId: null,
+    startClientX: 0,
+    lastClientX: 0,
+    target: null,
+  };
+  const lifeHeartImages = Array.from({ length: MAX_LIVES }, () => {
+    const image = document.createElement("img");
+    image.src = "Assets/Life.png";
+    image.alt = "";
+    image.addEventListener("animationend", () => {
+      image.classList.remove("life-heart-pop");
+    });
+    return image;
+  });
+  lifeValue.replaceChildren(...lifeHeartImages);
 
   let score = 0;
   let combo = 0;
   let catchCount = 0;
   let missCount = 0;
-  let lives = 3;
+  let lives = MAX_LIVES;
   let timeLeft = ROUND_SECONDS;
   let spawnTimer = 0;
   let finalCountdownSoundPlayed = false;
+  let applausePlayed = false;
   let voiceFadeActive = false;
   let voiceFadeTime = 0;
   let lastTime = 0;
   let running = false;
   let paused = false;
   let gameOver = false;
-  let idleAnimationActive = false;
-  let idleLastTime = 0;
+  let mainLoopActive = false;
   let bgmEnabled = true;
   let countdownActive = false;
   let countdownTime = 0;
+  let infoPageIndex = 0;
+  let infoTransition = null;
+  let infoDomAnimating = false;
+  let infoDomStartTimer = null;
+  let infoDomAnimationTimer = null;
   let glasses = [];
   let splashes = [];
   let dustParticles = [];
   let catchSparkEffects = [];
+  let lastRenderedLives = null;
   let catScratchEffects = [];
 
   const tray = {
@@ -244,6 +290,19 @@
     { name: "20", image: loadImage("Assets/wine bottle/cropped/20.png"), aspect: 232 / 500, color: "#7f8a5b", font: "red", points: 20 },
     { name: "25", image: loadImage("Assets/wine bottle/cropped/25.png"), aspect: 259 / 500, color: "#b0443f", font: "gold", points: 25 },
   ];
+  const lifeDropType = {
+    name: "life",
+    image: loadImage("Assets/Life.png"),
+    aspect: 1,
+    color: "#ff6f8e",
+    points: 0,
+    isLife: true,
+    noRotation: true,
+  };
+  const LIFE_DROP_CHANCE_BY_LIVES = {
+    1: 1 / 8,
+    2: 1 / 16,
+  };
 
   const failMessages = [
     "秀智因為肚子太餓暴衝砸毀了你的店",
@@ -254,14 +313,16 @@
   ];
 
   function resetGame() {
+    clearInputState();
     score = 0;
     combo = 0;
     catchCount = 0;
     missCount = 0;
-    lives = 3;
+    lives = MAX_LIVES;
     timeLeft = ROUND_SECONDS;
     spawnTimer = 0;
     finalCountdownSoundPlayed = false;
+    applausePlayed = false;
     stopVoiceLoop();
     glasses = [];
     splashes = [];
@@ -282,7 +343,6 @@
     suzy.awake = false;
     suzy.sleepTime = 0;
     suzy.bounceTime = suzy.bounceDuration;
-    idleAnimationActive = false;
     gameOver = false;
     paused = false;
     running = true;
@@ -291,12 +351,35 @@
     lastTime = performance.now();
     updateHud();
     messagePanel.classList.add("is-hidden");
+    startButton.blur();
     pauseButton.textContent = "暫停";
+    draw();
     playSound(eventSounds.cupOpen);
     startVoiceLoopFadeIn();
-    bgm.currentTime = 0;
+    try {
+      bgm.currentTime = 0;
+    } catch {
+      // Audio seeking can fail on some reload/restart timing; gameplay must continue.
+    }
     playBgm();
-    requestAnimationFrame(loop);
+  }
+
+  function clearInputState() {
+    keys.clear();
+    if (dragControl.pointerId !== null) {
+      try {
+        if (gameStage.hasPointerCapture(dragControl.pointerId)) {
+          gameStage.releasePointerCapture(dragControl.pointerId);
+        }
+      } catch {
+        // The pointer may already be gone when a round ends under an active hold.
+      }
+    }
+    dragControl.active = false;
+    dragControl.pointerId = null;
+    dragControl.lastClientX = 0;
+    dragControl.direction = 0;
+    dragControl.reverseDistance = 0;
   }
 
   function playBgm() {
@@ -349,36 +432,56 @@
   }
 
   function playSound(sound) {
-    sound.currentTime = 0;
-    sound.play().catch(() => {
-      // Browsers may block audio until a direct user gesture is accepted.
-    });
+    try {
+      sound.currentTime = 0;
+      sound.play().catch(() => {
+        // Browsers may block audio until a direct user gesture is accepted.
+      });
+    } catch {
+      // Sound effects should never interrupt gameplay.
+    }
+  }
+
+  function playCatDeflectSounds() {
+    catDeflectSounds.forEach(playSound);
   }
 
   function startVoiceLoopFadeIn() {
-    voiceLoop.currentTime = 0;
-    voiceLoop.volume = 0;
-    voiceFadeTime = 0;
-    voiceFadeActive = true;
-    voiceLoop.play().catch(() => {
-      // Browsers may block audio until a direct user gesture is accepted.
-    });
+    try {
+      voiceLoop.currentTime = 0;
+      voiceLoop.volume = 0;
+      voiceFadeTime = 0;
+      voiceFadeActive = true;
+      voiceLoop.play().catch(() => {
+        // Browsers may block audio until a direct user gesture is accepted.
+      });
+    } catch {
+      voiceFadeActive = false;
+    }
   }
 
   function stopVoiceLoop() {
     voiceFadeActive = false;
     voiceFadeTime = 0;
-    voiceLoop.pause();
-    voiceLoop.currentTime = 0;
-    voiceLoop.volume = 0;
+    try {
+      voiceLoop.pause();
+      voiceLoop.currentTime = 0;
+      voiceLoop.volume = 0;
+    } catch {
+      // Ignore audio state errors during restart/end cleanup.
+    }
   }
 
   function updateVoiceLoop(delta) {
     if (!voiceFadeActive) return;
     voiceFadeTime += delta;
-    voiceLoop.volume = Math.min(0.5, (voiceFadeTime / 2) * 0.5);
-    if (voiceFadeTime >= 2) {
-      voiceLoop.volume = 0.5;
+    try {
+      voiceLoop.volume = Math.min(0.5, (voiceFadeTime / 2) * 0.5);
+      if (voiceFadeTime >= 2) {
+        voiceLoop.volume = 0.5;
+        voiceFadeActive = false;
+      }
+    } catch {
       voiceFadeActive = false;
     }
   }
@@ -400,24 +503,183 @@
     return image;
   }
 
-  function updateHud() {
+  function switchInfoPage(direction) {
+    if (infoTransition) return;
+    const pageCount = infoPageSources.length;
+    const toIndex = (infoPageIndex + (direction < 0 ? 1 : -1) + pageCount) % pageCount;
+    if (toIndex === infoPageIndex) return;
+    const fromIndex = infoPageIndex;
+    infoTransition = {
+      fromIndex,
+      toIndex,
+      direction,
+      startTime: performance.now(),
+      duration: INFO_TRANSITION_MS,
+    };
+    if (isInfoPanelVisible()) {
+      startInfoDomTransition(fromIndex, toIndex, direction);
+    }
+  }
+
+  function getInfoVisualState(now = performance.now()) {
+    if (!infoTransition) {
+      return {
+        currentIndex: infoPageIndex,
+        nextIndex: null,
+        direction: 0,
+        progress: 0,
+      };
+    }
+
+    const rawProgress = Math.min(1, (now - infoTransition.startTime) / infoTransition.duration);
+    const progress = rawProgress < 0.5
+      ? 2 * rawProgress * rawProgress
+      : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+
+    return {
+      currentIndex: infoTransition.fromIndex,
+      nextIndex: infoTransition.toIndex,
+      direction: infoTransition.direction,
+      progress,
+    };
+  }
+
+  function updateInfoPageState(now = performance.now()) {
+    if (!infoTransition) return;
+    if (now - infoTransition.startTime < infoTransition.duration) return;
+    infoPageIndex = infoTransition.toIndex;
+    infoTransition = null;
+  }
+
+  function updateInfoPageDom(now = performance.now()) {
+    if (!infoCurrentImage || !infoNextImage) return;
+    if (infoDomAnimating) return;
+    const state = getInfoVisualState(now);
+    setInfoImageSource(infoCurrentImage, infoPageSources[state.currentIndex]);
+
+    if (state.nextIndex === null) {
+      infoCurrentImage.style.transition = "none";
+      infoNextImage.style.transition = "none";
+      infoCurrentImage.style.opacity = "1";
+      infoCurrentImage.style.transform = "translate3d(0, 0, 0)";
+      infoNextImage.style.opacity = "0";
+      infoNextImage.style.transform = "translate3d(100%, 0, 0)";
+      return;
+    }
+
+    setInfoImageSource(infoNextImage, infoPageSources[state.nextIndex]);
+    const exitX = state.direction < 0 ? -100 * state.progress : 100 * state.progress;
+    const enterX = state.direction < 0 ? 100 * (1 - state.progress) : -100 * (1 - state.progress);
+    infoCurrentImage.style.transition = "none";
+    infoNextImage.style.transition = "none";
+    infoCurrentImage.style.opacity = String(1 - state.progress);
+    infoCurrentImage.style.transform = `translate3d(${exitX}%, 0, 0)`;
+    infoNextImage.style.opacity = String(state.progress);
+    infoNextImage.style.transform = `translate3d(${enterX}%, 0, 0)`;
+  }
+
+  function resetInfoPage() {
+    infoPageIndex = 0;
+    infoTransition = null;
+    stopInfoDomTransition();
+    updateInfoPageDom();
+  }
+
+  function isInfoPanelVisible() {
+    return messagePanel.classList.contains("is-info") && !messagePanel.classList.contains("is-hidden");
+  }
+
+  function setInfoImageSource(image, source) {
+    if (image.getAttribute("src") !== source) image.src = source;
+  }
+
+  function startInfoDomTransition(fromIndex, toIndex, direction) {
+    stopInfoDomTransition();
+    infoDomAnimating = true;
+    setInfoImageSource(infoCurrentImage, infoPageSources[fromIndex]);
+    setInfoImageSource(infoNextImage, infoPageSources[toIndex]);
+
+    const enterStart = direction < 0 ? "100%" : "-100%";
+    const exitEnd = direction < 0 ? "-100%" : "100%";
+    infoCurrentImage.style.transition = "none";
+    infoNextImage.style.transition = "none";
+    infoCurrentImage.style.opacity = "1";
+    infoCurrentImage.style.transform = "translate3d(0, 0, 0)";
+    infoNextImage.style.opacity = "0";
+    infoNextImage.style.transform = `translate3d(${enterStart}, 0, 0)`;
+
+    void infoPageFrame.offsetWidth;
+    const transition = `transform ${INFO_TRANSITION_MS}ms cubic-bezier(0.22, 0.8, 0.28, 1), opacity ${INFO_TRANSITION_MS}ms ease`;
+    infoDomStartTimer = window.setTimeout(() => {
+      infoDomStartTimer = null;
+      if (!infoDomAnimating) return;
+      infoCurrentImage.style.transition = transition;
+      infoNextImage.style.transition = transition;
+      infoCurrentImage.style.opacity = "0";
+      infoCurrentImage.style.transform = `translate3d(${exitEnd}, 0, 0)`;
+      infoNextImage.style.opacity = "1";
+      infoNextImage.style.transform = "translate3d(0, 0, 0)";
+    }, 0);
+
+    infoDomAnimationTimer = window.setTimeout(() => {
+      if (infoTransition && infoTransition.fromIndex === fromIndex && infoTransition.toIndex === toIndex) {
+        infoPageIndex = toIndex;
+        infoTransition = null;
+      }
+      infoDomAnimating = false;
+      infoDomAnimationTimer = null;
+      updateInfoPageDom();
+    }, INFO_TRANSITION_MS + 40);
+  }
+
+  function stopInfoDomTransition() {
+    if (infoDomStartTimer !== null) {
+      window.clearTimeout(infoDomStartTimer);
+      infoDomStartTimer = null;
+    }
+    if (infoDomAnimationTimer !== null) {
+      window.clearTimeout(infoDomAnimationTimer);
+      infoDomAnimationTimer = null;
+    }
+    infoDomAnimating = false;
+  }
+
+  function updateHud(animateLifeGain = false) {
     scoreValue.textContent = String(score);
     comboValue.textContent = String(combo);
     catchValue.textContent = String(catchCount);
-    const visibleLives = Math.max(0, Math.min(3, lives));
-    lifeValue.replaceChildren(
-      ...Array.from({ length: visibleLives }, () => {
-        const image = document.createElement("img");
-        image.src = "Assets/Life.png";
-        image.alt = "";
-        return image;
-      })
-    );
-    lifeValue.setAttribute("aria-label", `生命 ${visibleLives}`);
+    updateLifeHearts(animateLifeGain);
     timeValue.textContent = String(Math.max(0, Math.ceil(timeLeft)));
   }
 
+  function updateLifeHearts(animateGain = false) {
+    const visibleLives = Math.max(0, Math.min(MAX_LIVES, lives));
+    const previousLives = lastRenderedLives;
+    if (visibleLives === lastRenderedLives) return;
+    lifeHeartImages.forEach((image, index) => {
+      const isVisible = index < visibleLives;
+      image.style.visibility = isVisible ? "visible" : "hidden";
+      image.style.opacity = isVisible ? "1" : "0";
+    });
+    if (animateGain && previousLives !== null && visibleLives > previousLives) {
+      for (let i = previousLives; i < visibleLives; i += 1) {
+        triggerLifeHeartPop(i);
+      }
+    }
+    lifeValue.setAttribute("aria-label", `生命 ${visibleLives}`);
+    lastRenderedLives = visibleLives;
+  }
+
+  function triggerLifeHeartPop(index) {
+    const image = lifeHeartImages[index];
+    if (!image) return;
+    image.classList.remove("life-heart-pop");
+    void image.offsetWidth;
+    image.classList.add("life-heart-pop");
+  }
+
   function showMessage(title, text, buttonText, mode = "") {
+    messagePanel.classList.remove("is-info");
     messagePanel.querySelector("h1").textContent = title;
     const messageText = messagePanel.querySelector("p");
     if (mode === "fail") {
@@ -435,8 +697,8 @@
   }
 
   function spawnGlass() {
-    const type = glassTypes[Math.floor(Math.random() * glassTypes.length)];
-    const size = 58 + Math.random() * 18;
+    const type = chooseDropType();
+    const size = type.isLife ? 48 + Math.random() * 8 : 58 + Math.random() * 18;
     const startX = SPAWN_LINE.left + Math.random() * (SPAWN_LINE.right - SPAWN_LINE.left);
     const targetX = Math.max(54, Math.min(WIDTH - 54, startX + (-280 + Math.random() * 560)));
     const fallDistance = HEIGHT + 70 - SPAWN_LINE.y;
@@ -453,12 +715,20 @@
       duration,
       size,
       width: size * type.aspect,
-      rotation: -0.3 + Math.random() * 0.6,
-      spin: -1.2 + Math.random() * 2.4,
+      rotation: type.noRotation ? 0 : -0.3 + Math.random() * 0.6,
+      spin: type.noRotation ? 0 : -1.2 + Math.random() * 2.4,
       catHitCooldown: 0,
       type,
     });
     triggerSuzyBounce();
+  }
+
+  function chooseDropType() {
+    const lifeDropChance = LIFE_DROP_CHANCE_BY_LIVES[lives] || 0;
+    if (lifeDropChance > 0 && Math.random() < lifeDropChance) {
+      return lifeDropType;
+    }
+    return glassTypes[Math.floor(Math.random() * glassTypes.length)];
   }
 
   function resetGlassTrajectoryFromCat(glass) {
@@ -504,6 +774,17 @@
       color,
       text,
       font,
+      age: 0,
+      life: 0.7,
+    });
+  }
+
+  function addImageSplash(x, y, image, width) {
+    splashes.push({
+      x,
+      y,
+      image,
+      width,
       age: 0,
       life: 0.7,
     });
@@ -558,13 +839,13 @@
     }
     if (timeLeft <= 0) {
       playSound(eventSounds.cupClose);
-      if (catchCount >= 50) playSound(eventSounds.applause);
       endGame("時間到", `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次");
       return;
     }
 
     spawnTimer -= delta;
-    const baseSpawnEvery = Math.max(0.42, 1.08 - score / 900);
+    const scorePressure = Math.min(1, score / 1500);
+    const baseSpawnEvery = 1.08 - 0.46 * (1 - Math.pow(1 - scorePressure, 1.65));
     const spawnEvery = timeLeft <= 10 ? baseSpawnEvery * 0.5 : baseSpawnEvery;
     if (spawnTimer <= 0) {
       spawnGlass();
@@ -583,9 +864,10 @@
       glass.y = glass.startY - glass.arcHeight * Math.sin(Math.PI * Math.min(t, 1)) + glass.fallDistance * t * t;
       glass.rotation += glass.spin * delta;
 
-      if (glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
+      if (!glass.type.isLife && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
         triggerCat2Attack();
         resetGlassTrajectoryFromCat(glass);
+        playCatDeflectSounds();
         continue;
       }
 
@@ -597,6 +879,19 @@
         Math.abs(glass.x - trayCenterX) <= tray.width / 2 + glass.size * 0.18;
 
       if (caught) {
+        if (glass.type.isLife) {
+          const healed = lives < MAX_LIVES;
+          lives = Math.min(MAX_LIVES, lives + 1);
+          if (healed) {
+            playSound(eventSounds.heal);
+            addCatchSparks(glass.x, trayTop + 2);
+            addImageSplash(glass.x, trayTop - 10, lifePopupImage, 78);
+          }
+          glasses.splice(i, 1);
+          updateHud(healed);
+          continue;
+        }
+
         combo += 1;
         catchCount += 1;
         const earnedPoints = glass.type.points + Math.min(combo * 2, 80);
@@ -609,6 +904,11 @@
       }
 
       if (glass.y > HEIGHT + 36) {
+        glasses.splice(i, 1);
+        if (glass.type.isLife) {
+          continue;
+        }
+
         missCount += 1;
         if (!debugState.infiniteMode) {
           lives -= 1;
@@ -616,8 +916,7 @@
         }
         combo = 0;
         playMissSound();
-        addSplash(glass.x, HEIGHT - 44, "#ffffff", "MISS");
-        glasses.splice(i, 1);
+        addImageSplash(glass.x, HEIGHT - 44, missPopupImage, 110);
         if (lives <= 0) {
           endGame("收攤", `${getFailMessage()}\n你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次", "fail");
           return;
@@ -641,6 +940,11 @@
     running = false;
     gameOver = true;
     countdownActive = false;
+    if (catchCount >= 50 && !applausePlayed) {
+      applausePlayed = true;
+      playSound(eventSounds.applause);
+    }
+    clearInputState();
     bgm.pause();
     stopVoiceLoop();
     updateHud();
@@ -1215,7 +1519,9 @@
     const t = splash.age / splash.life;
     ctx.save();
     ctx.globalAlpha = 1 - t;
-    if (splash.font) {
+    if (splash.image) {
+      drawSplashImage(splash, t);
+    } else if (splash.font) {
       drawBitmapText(splash.text, splash.x, splash.y - t * 42, splash.font, 0.34);
     } else {
       ctx.fillStyle = splash.color;
@@ -1224,6 +1530,22 @@
       ctx.fillText(splash.text, splash.x, splash.y - t * 42);
     }
     ctx.restore();
+  }
+
+  function drawSplashImage(splash, t) {
+    const image = splash.image;
+    const width = splash.width;
+    const imageRatio = image && image.complete && image.naturalWidth > 0 ? image.naturalHeight / image.naturalWidth : 0.42;
+    const height = width * imageRatio;
+    const y = splash.y - t * 42;
+    if (image && image.complete && image.naturalWidth > 0) {
+      ctx.drawImage(image, splash.x - width / 2, y - height, width, height);
+    } else {
+      ctx.fillStyle = "#ff8fab";
+      ctx.font = "700 24px Microsoft JhengHei, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("+life", splash.x, y);
+    }
   }
 
   function drawBitmapText(text, centerX, baselineY, fontName, scale) {
@@ -1318,49 +1640,132 @@
     splashes.forEach(drawSplash);
     drawCountdown();
 
-    if (paused && running) {
-      ctx.fillStyle = "rgba(0,0,0,0.38)";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "#fff7dc";
-      ctx.font = "700 54px Microsoft JhengHei, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("暫停", WIDTH / 2, HEIGHT / 2);
+    if (paused && running) drawPauseOverlay();
+  }
+
+  function drawPauseOverlay() {
+    ctx.save();
+    ctx.fillStyle = "rgba(18, 8, 7, 0.58)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const infoLayout = getPauseInfoLayout();
+    drawPauseInfoPages(infoLayout);
+    drawPauseInfoArrows(infoLayout);
+
+    const pausePulse = (Math.sin(performance.now() / 380) + 1) / 2;
+    ctx.globalAlpha = 0.42 + pausePulse * 0.58;
+    ctx.fillStyle = "#fff7dc";
+    ctx.font = "800 44px Microsoft JhengHei, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = `rgba(255, 247, 220, ${0.35 + pausePulse * 0.45})`;
+    ctx.shadowBlur = 6 + pausePulse * 14;
+    ctx.fillText("暫停", WIDTH / 2, infoLayout.y + infoLayout.height + 24);
+    ctx.restore();
+  }
+
+  function getPauseInfoLayout() {
+    const state = getInfoVisualState();
+    const image = infoPageImages[state.currentIndex] || infoPageImages[0];
+    const imageAspect = image && image.complete && image.naturalWidth > 0
+      ? image.naturalWidth / image.naturalHeight
+      : 1024 / 1346;
+    const height = 390;
+    const width = height * imageAspect;
+    return {
+      x: WIDTH / 2 - width / 2,
+      y: 36,
+      width,
+      height,
+      arrowSize: 22,
+      arrowOffset: 42,
+    };
+  }
+
+  function drawPauseInfoPages(layout) {
+    const state = getInfoVisualState();
+    if (state.nextIndex === null) {
+      drawPauseInfoImage(infoPageImages[state.currentIndex], layout.x, layout.y, layout.width, layout.height, 1);
+      return;
     }
+
+    const exitX = state.direction < 0 ? -layout.width * state.progress : layout.width * state.progress;
+    const enterX = state.direction < 0 ? layout.width * (1 - state.progress) : -layout.width * (1 - state.progress);
+    drawPauseInfoImage(infoPageImages[state.currentIndex], layout.x + exitX, layout.y, layout.width, layout.height, 1 - state.progress);
+    drawPauseInfoImage(infoPageImages[state.nextIndex], layout.x + enterX, layout.y, layout.width, layout.height, state.progress);
+  }
+
+  function drawPauseInfoImage(image, x, y, width, height, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (image && image.complete && image.naturalWidth > 0) {
+      ctx.drawImage(image, x, y, width, height);
+    } else {
+      ctx.fillStyle = "rgba(255, 247, 220, 0.88)";
+      ctx.fillRect(x, y, width, height);
+    }
+    ctx.restore();
+  }
+
+  function drawPauseInfoArrows(layout) {
+    const centerY = layout.y + layout.height / 2;
+    drawPauseInfoArrow(layout.x - layout.arrowOffset, centerY, -1, layout.arrowSize);
+    drawPauseInfoArrow(layout.x + layout.width + layout.arrowOffset, centerY, 1, layout.arrowSize);
+  }
+
+  function drawPauseInfoArrow(centerX, centerY, direction, size) {
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 247, 220, 0.16)";
+    ctx.strokeStyle = "rgba(255, 247, 220, 0.48)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(centerX - 22, centerY - 37, 44, 74);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#fff7dc";
+    ctx.beginPath();
+    if (direction < 0) {
+      ctx.moveTo(centerX - size * 0.52, centerY);
+      ctx.lineTo(centerX + size * 0.48, centerY - size * 0.72);
+      ctx.lineTo(centerX + size * 0.48, centerY + size * 0.72);
+    } else {
+      ctx.moveTo(centerX + size * 0.52, centerY);
+      ctx.lineTo(centerX - size * 0.48, centerY - size * 0.72);
+      ctx.lineTo(centerX - size * 0.48, centerY + size * 0.72);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   function loop(now) {
-    if (!running) {
+    try {
+      const delta = Math.min(0.033, (now - lastTime) / 1000 || 0);
+      lastTime = now;
+      updateInfoPageState(now);
+      updateInfoPageDom(now);
+
+      if (running) {
+        update(delta);
+      } else if (!suzy.awake) {
+        suzy.sleepTime += delta;
+        updateCat2(delta);
+      }
+
       draw();
-      return;
+    } catch (error) {
+      console.error("Game loop error", error);
+    } finally {
+      requestAnimationFrame(loop);
     }
-
-    const delta = Math.min(0.033, (now - lastTime) / 1000 || 0);
-    lastTime = now;
-    update(delta);
-    draw();
-    if (running) requestAnimationFrame(loop);
   }
 
-  function idleLoop(now) {
-    if (!idleAnimationActive) return;
-    if (running || suzy.awake) {
-      idleAnimationActive = false;
-      return;
-    }
-
-    const delta = Math.min(0.033, (now - idleLastTime) / 1000 || 0);
-    idleLastTime = now;
-    suzy.sleepTime += delta;
-    updateCat2(delta);
-    draw();
-    requestAnimationFrame(idleLoop);
-  }
-
-  function startIdleAnimation() {
-    if (idleAnimationActive) return;
-    idleAnimationActive = true;
-    idleLastTime = performance.now();
-    requestAnimationFrame(idleLoop);
+  function startMainLoop() {
+    if (mainLoopActive) return;
+    mainLoopActive = true;
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
   }
 
   function setButtonKey(button, key) {
@@ -1378,12 +1783,109 @@
     button.addEventListener("pointercancel", release);
   }
 
+  function startInfoDrag(event, target) {
+    if (infoTransition) return false;
+    event.preventDefault();
+    infoDrag.active = true;
+    infoDrag.pointerId = event.pointerId;
+    infoDrag.startClientX = event.clientX;
+    infoDrag.lastClientX = event.clientX;
+    infoDrag.target = target;
+    if (target && target.setPointerCapture) {
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture can fail if the pointer is already owned by another element.
+      }
+    }
+    return true;
+  }
+
+  function updateInfoDrag(event) {
+    if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
+    event.preventDefault();
+    infoDrag.lastClientX = event.clientX;
+    return true;
+  }
+
+  function finishInfoDrag(event) {
+    if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
+    event.preventDefault();
+    infoDrag.lastClientX = event.clientX;
+    const deltaX = infoDrag.lastClientX - infoDrag.startClientX;
+    if (Math.abs(deltaX) >= INFO_DRAG_THRESHOLD) {
+      switchInfoPage(deltaX < 0 ? -1 : 1);
+    }
+    if (infoDrag.target && infoDrag.target.hasPointerCapture && infoDrag.target.hasPointerCapture(event.pointerId)) {
+      infoDrag.target.releasePointerCapture(event.pointerId);
+    }
+    resetInfoDrag();
+    return true;
+  }
+
+  function resetInfoDrag() {
+    infoDrag.active = false;
+    infoDrag.pointerId = null;
+    infoDrag.startClientX = 0;
+    infoDrag.lastClientX = 0;
+    infoDrag.target = null;
+  }
+
+  function getPauseInfoAction(point) {
+    if (!paused || !running) return null;
+    const layout = getPauseInfoLayout();
+    const centerY = layout.y + layout.height / 2;
+    const leftX = layout.x - layout.arrowOffset;
+    const rightX = layout.x + layout.width + layout.arrowOffset;
+    const isInside = (x, y, width, height) =>
+      point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
+
+    if (isInside(leftX - 28, centerY - 48, 56, 96)) return { type: "arrow", direction: -1 };
+    if (isInside(rightX - 28, centerY - 48, 56, 96)) return { type: "arrow", direction: 1 };
+    if (isInside(layout.x, layout.y, layout.width, layout.height)) return { type: "drag" };
+    return { type: "block" };
+  }
+
+  function handlePauseInfoPointerDown(event) {
+    const action = getPauseInfoAction(getCanvasPoint(event));
+    if (!action) return false;
+    event.preventDefault();
+    if (action.type === "arrow") {
+      switchInfoPage(action.direction);
+      return true;
+    }
+    if (action.type === "drag") {
+      startInfoDrag(event, gameStage);
+      return true;
+    }
+    return true;
+  }
+
   startButton.addEventListener("click", resetGame);
+  infoPrevButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    switchInfoPage(-1);
+  });
+  infoNextButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    switchInfoPage(1);
+  });
+  infoPageFrame.addEventListener("pointerdown", (event) => {
+    startInfoDrag(event, infoPageFrame);
+  });
+  infoPageFrame.addEventListener("pointermove", updateInfoDrag);
+  infoPageFrame.addEventListener("pointerup", finishInfoDrag);
+  infoPageFrame.addEventListener("pointercancel", (event) => {
+    finishInfoDrag(event);
+  });
   pauseButton.addEventListener("click", () => {
     if (!running || gameOver) return;
     paused = !paused;
     pauseButton.textContent = paused ? "繼續" : "暫停";
     if (paused) {
+      resetInfoPage();
       bgm.pause();
       voiceLoop.pause();
     } else {
@@ -1393,7 +1895,6 @@
       });
     }
     lastTime = performance.now();
-    if (!paused) requestAnimationFrame(loop);
     draw();
   });
 
@@ -1453,6 +1954,7 @@
 
   gameStage.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".debug-panel, button, input, label")) return;
+    if (handlePauseInfoPointerDown(event)) return;
     if (!isInDragControlArea(event)) return;
     event.preventDefault();
     dragControl.active = true;
@@ -1464,6 +1966,7 @@
   });
 
   gameStage.addEventListener("pointermove", (event) => {
+    if (updateInfoDrag(event)) return;
     if (!dragControl.active || event.pointerId !== dragControl.pointerId) return;
     event.preventDefault();
     const deltaX = event.clientX - dragControl.lastClientX;
@@ -1486,9 +1989,16 @@
     }
   }
 
-  gameStage.addEventListener("pointerup", stopDragControl);
-  gameStage.addEventListener("pointercancel", stopDragControl);
+  gameStage.addEventListener("pointerup", (event) => {
+    if (finishInfoDrag(event)) return;
+    stopDragControl(event);
+  });
+  gameStage.addEventListener("pointercancel", (event) => {
+    if (finishInfoDrag(event)) return;
+    stopDragControl(event);
+  });
   gameStage.addEventListener("lostpointercapture", () => {
+    resetInfoDrag();
     dragControl.active = false;
     dragControl.pointerId = null;
     dragControl.direction = 0;
@@ -1515,7 +2025,8 @@
 
   updateBgmButton();
   debugReverseDistance.value = String(dragControl.reverseSwitchDistance);
+  updateInfoPageDom();
   draw();
-  startIdleAnimation();
+  startMainLoop();
   backgroundImage.addEventListener("load", draw);
 })();
