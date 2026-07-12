@@ -107,7 +107,8 @@
   const angerImage = loadImage("Assets/anger.png");
   const lifePopupImage = loadImage("Assets/+life.png");
   const missPopupImage = loadImage("Assets/Font/Miss.png");
-  const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png"];
+  const blackboardImage = loadImage("Assets/blackboard.png");
+  const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png", "Assets/Info_Page3.png"];
   const infoPageImages = infoPageSources.map(loadImage);
   const cat2Parts = {
     body: loadImage("Assets/Yume/Cat2.png"),
@@ -215,7 +216,11 @@
   const MAX_LIVES = 3;
   const INFO_TRANSITION_MS = 360;
   const INFO_DRAG_THRESHOLD = 42;
-  const FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.3;
+  const LEVEL_ONE_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.3;
+  const LEVEL_TWO_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.8;
+  const LEVEL_CLEAR_TAP_DELAY = 1;
+  const LEVEL_CLEAR_FADE_SECONDS = 0.5;
+  const LEVEL_CLEAR_CONFETTI_SECONDS = 3;
   const JUKEBOX_BUTTON = { x: 38, y: 318, width: 54, height: 32 };
   const JUKEBOX_CLICK_DRAG_THRESHOLD = 14;
   const LOADING_BLACK_MS = 500;
@@ -281,6 +286,8 @@
   let running = false;
   let paused = false;
   let gameOver = false;
+  let currentLevel = 1;
+  let cat2Enabled = false;
   let mainLoopActive = false;
   let bgmEnabled = true;
   let firstGameplayStart = true;
@@ -302,6 +309,18 @@
   let catchSparkEffects = [];
   let lastRenderedLives = null;
   let catScratchEffects = [];
+  let levelClearConfetti = [];
+  const transitionBuffer = document.createElement("canvas");
+  transitionBuffer.width = canvas.width;
+  transitionBuffer.height = canvas.height;
+  const transitionBufferContext = transitionBuffer.getContext("2d");
+  const levelClearState = {
+    active: false,
+    elapsed: 0,
+    exiting: false,
+    exitTime: 0,
+    allowContinue: false,
+  };
 
   const tray = {
     x: WIDTH / 2,
@@ -349,6 +368,14 @@
 
   function resetGame() {
     clearInputState();
+    currentLevel = 1;
+    cat2Enabled = false;
+    levelClearState.active = false;
+    levelClearState.elapsed = 0;
+    levelClearState.exiting = false;
+    levelClearState.exitTime = 0;
+    levelClearState.allowContinue = false;
+    levelClearConfetti = [];
     score = 0;
     combo = 0;
     catchCount = 0;
@@ -429,6 +456,25 @@
     bgm.play().catch(() => {
       // Browsers may block audio until a direct user gesture is accepted.
     });
+  }
+
+  function setBgmTrack(index, restart = true) {
+    const nextIndex = ((index % bgmTracks.length) + bgmTracks.length) % bgmTracks.length;
+    try {
+      bgm.pause();
+      if (restart) bgm.currentTime = 0;
+    } catch {
+      // Ignore audio state errors while swapping tracks.
+    }
+    currentBgmIndex = nextIndex;
+    bgm = bgmTracks[currentBgmIndex];
+    if (restart) {
+      try {
+        bgm.currentTime = 0;
+      } catch {
+        // Ignore audio state errors while swapping tracks.
+      }
+    }
   }
 
   function clearLoadingTimer() {
@@ -515,19 +561,7 @@
 
   function switchToNextBgmTrack() {
     const shouldResume = bgmEnabled && running && !paused && !gameOver;
-    try {
-      bgm.pause();
-      bgm.currentTime = 0;
-    } catch {
-      // Ignore audio state errors while swapping tracks.
-    }
-    currentBgmIndex = (currentBgmIndex + 1) % bgmTracks.length;
-    bgm = bgmTracks[currentBgmIndex];
-    try {
-      bgm.currentTime = 0;
-    } catch {
-      // Ignore audio state errors while swapping tracks.
-    }
+    setBgmTrack(currentBgmIndex + 1, true);
     if (shouldResume) playBgm();
   }
 
@@ -706,12 +740,36 @@
     return image;
   }
 
+  function getActiveInfoPageIndexes() {
+    return currentLevel >= 2 ? [2, 0, 1] : [0, 1];
+  }
+
+  function getInfoPageSource(index) {
+    return infoPageSources[index] || infoPageSources[0];
+  }
+
+  function getInfoPageImage(index) {
+    return infoPageImages[index] || infoPageImages[0];
+  }
+
+  function normalizeInfoPageIndex() {
+    const pageIndexes = getActiveInfoPageIndexes();
+    if (!pageIndexes.includes(infoPageIndex)) {
+      infoPageIndex = pageIndexes[0];
+    }
+    return infoPageIndex;
+  }
+
   function switchInfoPage(direction) {
     if (infoTransition) return;
-    const pageCount = infoPageSources.length;
-    const toIndex = (infoPageIndex + (direction < 0 ? 1 : -1) + pageCount) % pageCount;
-    if (toIndex === infoPageIndex) return;
-    const fromIndex = infoPageIndex;
+    const pageIndexes = getActiveInfoPageIndexes();
+    const pageCount = pageIndexes.length;
+    if (pageCount <= 1) return;
+    const fromIndex = normalizeInfoPageIndex();
+    const fromPosition = pageIndexes.indexOf(fromIndex);
+    const positionOffset = direction < 0 ? 1 : -1;
+    const toIndex = pageIndexes[(fromPosition + positionOffset + pageCount) % pageCount];
+    if (toIndex === fromIndex) return;
     infoTransition = {
       fromIndex,
       toIndex,
@@ -727,7 +785,7 @@
   function getInfoVisualState(now = performance.now()) {
     if (!infoTransition) {
       return {
-        currentIndex: infoPageIndex,
+        currentIndex: normalizeInfoPageIndex(),
         nextIndex: null,
         direction: 0,
         progress: 0,
@@ -758,7 +816,7 @@
     if (!infoCurrentImage || !infoNextImage) return;
     if (infoDomAnimating) return;
     const state = getInfoVisualState(now);
-    setInfoImageSource(infoCurrentImage, infoPageSources[state.currentIndex]);
+    setInfoImageSource(infoCurrentImage, getInfoPageSource(state.currentIndex));
 
     if (state.nextIndex === null) {
       infoCurrentImage.style.transition = "none";
@@ -770,7 +828,7 @@
       return;
     }
 
-    setInfoImageSource(infoNextImage, infoPageSources[state.nextIndex]);
+    setInfoImageSource(infoNextImage, getInfoPageSource(state.nextIndex));
     const exitX = state.direction < 0 ? -100 * state.progress : 100 * state.progress;
     const enterX = state.direction < 0 ? 100 * (1 - state.progress) : -100 * (1 - state.progress);
     infoCurrentImage.style.transition = "none";
@@ -782,7 +840,7 @@
   }
 
   function resetInfoPage() {
-    infoPageIndex = 0;
+    infoPageIndex = getActiveInfoPageIndexes()[0];
     infoTransition = null;
     stopInfoDomTransition();
     updateInfoPageDom();
@@ -799,8 +857,8 @@
   function startInfoDomTransition(fromIndex, toIndex, direction) {
     stopInfoDomTransition();
     infoDomAnimating = true;
-    setInfoImageSource(infoCurrentImage, infoPageSources[fromIndex]);
-    setInfoImageSource(infoNextImage, infoPageSources[toIndex]);
+    setInfoImageSource(infoCurrentImage, getInfoPageSource(fromIndex));
+    setInfoImageSource(infoNextImage, getInfoPageSource(toIndex));
 
     const enterStart = direction < 0 ? "100%" : "-100%";
     const exitEnd = direction < 0 ? "-100%" : "100%";
@@ -993,6 +1051,130 @@
     });
   }
 
+  function resetRoundVisualsForLevelClear() {
+    clearInputState();
+    glasses = [];
+    splashes = [];
+    dustParticles = [];
+    catchSparkEffects = [];
+    catScratchEffects = [];
+    tray.x = WIDTH / 2;
+    tray.direction = -1;
+    tray.moving = false;
+    tray.walkTime = 0;
+    tray.handSway = 0;
+    tray.dustTimer = 0;
+    suzy.awake = false;
+    suzy.sleepTime = 0;
+    suzy.bounceTime = suzy.bounceDuration;
+    cat2.attackTimer = 0;
+    cat2.reactTimer = 0;
+    cat2.collisionHitTimes = [];
+    cat2.angerTimer = 0;
+    cat2.hitClock = 0;
+    cat2.tailTime = 0;
+    cat2.tailDuration = 0;
+    cat2.tailAngle = 0;
+    cat2.tailCooldown = 0.55;
+  }
+
+  function createLevelClearConfetti() {
+    const colors = ["#ffef66", "#ff725c", "#69d2ff", "#7cff8b", "#f5a6ff", "#fff7dc"];
+    levelClearConfetti = Array.from({ length: 96 }, () => ({
+      x: Math.random() * WIDTH,
+      y: -30 - Math.random() * 190,
+      width: 4 + Math.random() * 8,
+      height: 8 + Math.random() * 16,
+      vx: -28 + Math.random() * 56,
+      vy: 74 + Math.random() * 150,
+      rotation: Math.random() * Math.PI * 2,
+      spin: -5 + Math.random() * 10,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      delay: Math.random() * 0.42,
+    }));
+  }
+
+  function startLevelClearTransition() {
+    running = false;
+    paused = false;
+    gameOver = false;
+    countdownActive = false;
+    combo = 0;
+    currentLevel = 2;
+    cat2Enabled = true;
+    timeLeft = ROUND_SECONDS;
+    spawnTimer = 0;
+    finalCountdownSoundPlayed = false;
+    stopVoiceLoop();
+    resetRoundVisualsForLevelClear();
+    createLevelClearConfetti();
+    resetInfoPage();
+    levelClearState.active = true;
+    levelClearState.elapsed = 0;
+    levelClearState.exiting = false;
+    levelClearState.exitTime = 0;
+    levelClearState.allowContinue = false;
+    pauseButton.textContent = "暫停";
+    updateHud();
+    playSound(eventSounds.applause);
+    draw();
+  }
+
+  function updateLevelClearTransition(delta) {
+    if (!levelClearState.active) return;
+    levelClearState.elapsed += delta;
+    suzy.sleepTime += delta;
+    if (cat2Enabled) updateCat2(delta);
+
+    for (const piece of levelClearConfetti) {
+      if (levelClearState.elapsed < piece.delay) continue;
+      piece.x += piece.vx * delta;
+      piece.y += piece.vy * delta;
+      piece.vy += 35 * delta;
+      piece.rotation += piece.spin * delta;
+    }
+
+    if (levelClearState.elapsed >= LEVEL_CLEAR_TAP_DELAY) {
+      levelClearState.allowContinue = true;
+    }
+
+    if (levelClearState.exiting) {
+      levelClearState.exitTime += delta;
+      if (levelClearState.exitTime >= LEVEL_CLEAR_FADE_SECONDS) {
+        startSecondLevel();
+      }
+    }
+  }
+
+  function startSecondLevel() {
+    levelClearState.active = false;
+    levelClearState.exiting = false;
+    levelClearState.exitTime = 0;
+    levelClearState.allowContinue = false;
+    levelClearConfetti = [];
+    running = true;
+    paused = false;
+    gameOver = false;
+    countdownActive = true;
+    countdownTime = 3;
+    finalCountdownSoundPlayed = false;
+    suzy.awake = false;
+    suzy.sleepTime = 0;
+    suzy.bounceTime = suzy.bounceDuration;
+    setBgmTrack(1, true);
+    playBgm();
+    startVoiceLoopFadeIn();
+    lastTime = performance.now();
+    updateHud();
+    draw();
+  }
+
+  function continueLevelClearTransition() {
+    if (!levelClearState.active || !levelClearState.allowContinue || levelClearState.exiting) return;
+    levelClearState.exiting = true;
+    levelClearState.exitTime = 0;
+  }
+
   function update(delta) {
     if (!running || paused) return;
 
@@ -1028,7 +1210,7 @@
     tray.handSway += ((tray.moving ? Math.sin(tray.walkTime) : 0) - tray.handSway) * Math.min(1, delta * 14);
     updateRunDust(delta);
     updateCatchSparks(delta);
-    updateCat2(delta);
+    if (cat2Enabled) updateCat2(delta);
     updateVoiceLoop(delta);
     if (!suzy.awake) suzy.sleepTime += delta;
 
@@ -1051,6 +1233,10 @@
       playSound(eventSounds.finalCountdown);
     }
     if (timeLeft <= 0) {
+      if (currentLevel === 1) {
+        startLevelClearTransition();
+        return;
+      }
       playSound(eventSounds.cupClose);
       endGame("時間到", `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次");
       return;
@@ -1059,7 +1245,8 @@
     spawnTimer -= delta;
     const scorePressure = Math.min(1, score / 1500);
     const baseSpawnEvery = 1.08 - 0.46 * (1 - Math.pow(1 - scorePressure, 1.65));
-    const spawnEvery = timeLeft <= 10 ? baseSpawnEvery / FINAL_TEN_SECONDS_SPAWN_MULTIPLIER : baseSpawnEvery;
+    const finalTenMultiplier = currentLevel >= 2 ? LEVEL_TWO_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER : LEVEL_ONE_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER;
+    const spawnEvery = timeLeft <= 10 ? baseSpawnEvery / finalTenMultiplier : baseSpawnEvery;
     if (spawnTimer <= 0) {
       spawnGlass();
       spawnTimer = spawnEvery;
@@ -1077,7 +1264,7 @@
       glass.y = glass.startY - glass.arcHeight * Math.sin(Math.PI * Math.min(t, 1)) + glass.fallDistance * t * t;
       glass.rotation += glass.spin * delta;
 
-      if (!glass.type.isLife && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
+      if (cat2Enabled && !glass.type.isLife && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
         triggerCat2Attack();
         resetGlassTrajectoryFromCat(glass);
         playCatDeflectSounds();
@@ -1878,6 +2065,83 @@
     ctx.restore();
   }
 
+  function drawLevelClearTransitionOverlay() {
+    const fadeIn = Math.min(1, levelClearState.elapsed / LEVEL_CLEAR_FADE_SECONDS);
+    const exitFade = levelClearState.exiting
+      ? Math.max(0, 1 - levelClearState.exitTime / LEVEL_CLEAR_FADE_SECONDS)
+      : 1;
+    const alpha = fadeIn * exitFade;
+    const infoLayout = getPauseInfoLayout();
+
+    ctx.save();
+    ctx.fillStyle = `rgba(18, 8, 7, ${0.58 * alpha})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.globalAlpha = alpha;
+    drawLevelClearConfetti();
+    drawPauseInfoPages(infoLayout);
+    drawPauseInfoArrows(infoLayout);
+    drawLevelClearContinueText(infoLayout);
+    ctx.restore();
+  }
+
+  function drawLevelClearConfetti() {
+    const fadeOut = Math.max(0, 1 - Math.max(0, levelClearState.elapsed - LEVEL_CLEAR_CONFETTI_SECONDS) / 0.75);
+    if (fadeOut <= 0) return;
+    levelClearConfetti.forEach((piece) => {
+      if (levelClearState.elapsed < piece.delay) return;
+      ctx.save();
+      ctx.globalAlpha *= fadeOut;
+      ctx.translate(piece.x, piece.y);
+      ctx.rotate(piece.rotation);
+      ctx.fillStyle = piece.color;
+      ctx.fillRect(-piece.width / 2, -piece.height / 2, piece.width, piece.height);
+      ctx.restore();
+    });
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function getLevelClearLayout() {
+    const infoLayout = getPauseInfoLayout();
+    const resultY = clamp(infoLayout.y + infoLayout.height + 30, HEIGHT * 0.55, HEIGHT - 98);
+    const tapCenterY = clamp(resultY + 46, HEIGHT * 0.66, HEIGHT - 44);
+    const tapRect = {
+      x: WIDTH / 2 - 170,
+      y: tapCenterY - 38,
+      width: 340,
+      height: 76,
+    };
+
+    return { resultY, tapCenterY, tapRect };
+  }
+
+  function drawLevelClearContinueText() {
+    const { resultY, tapCenterY } = getLevelClearLayout();
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff7dc";
+    ctx.strokeStyle = "rgba(35, 18, 10, 0.86)";
+    ctx.lineWidth = 4.5;
+    ctx.font = "800 23px Microsoft JhengHei, sans-serif";
+    const resultText = `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`;
+    ctx.strokeText(resultText, WIDTH / 2, resultY);
+    ctx.fillText(resultText, WIDTH / 2, resultY);
+
+    if (levelClearState.allowContinue) {
+      const pulse = (Math.sin(performance.now() / 360) + 1) / 2;
+      const baseAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = baseAlpha * (0.55 + pulse * 0.45);
+      ctx.font = "900 31px Microsoft JhengHei, sans-serif";
+      ctx.lineWidth = 6;
+      ctx.strokeText("Tap to continue", WIDTH / 2, tapCenterY);
+      ctx.fillText("Tap to continue", WIDTH / 2, tapCenterY);
+    }
+    ctx.restore();
+  }
+
   function draw() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1885,19 +2149,20 @@
 
     drawBackground();
     drawSuzy();
-    drawCat2();
+    if (cat2Enabled) drawCat2();
     glasses.forEach(drawGlass);
     if (debugState.bottleCollision) glasses.forEach(drawBottleCollisionDebug);
     drawRunDust();
     drawTray();
     drawCatchSparks();
     if (debugState.trayCollision) drawCollisionDebug();
-    if (debugState.catCollision) drawCatCollisionDebug();
+    if (cat2Enabled && debugState.catCollision) drawCatCollisionDebug();
     if (debugState.jukeboxCollision) drawJukeboxCollisionDebug();
     if (debugState.inputArea) drawInputAreaDebug();
     splashes.forEach(drawSplash);
     drawCountdown();
     drawFinalCountdown();
+    if (levelClearState.active) drawLevelClearTransitionOverlay();
 
     if (paused && running) drawPauseOverlay();
   }
@@ -1925,7 +2190,7 @@
 
   function getPauseInfoLayout() {
     const state = getInfoVisualState();
-    const image = infoPageImages[state.currentIndex] || infoPageImages[0];
+    const image = getInfoPageImage(state.currentIndex);
     const imageAspect = image && image.complete && image.naturalWidth > 0
       ? image.naturalWidth / image.naturalHeight
       : 1024 / 1346;
@@ -1944,19 +2209,19 @@
   function drawPauseInfoPages(layout) {
     const state = getInfoVisualState();
     if (state.nextIndex === null) {
-      drawPauseInfoImage(infoPageImages[state.currentIndex], layout.x, layout.y, layout.width, layout.height, 1);
+      drawPauseInfoImage(getInfoPageImage(state.currentIndex), layout.x, layout.y, layout.width, layout.height, 1);
       return;
     }
 
     const exitX = state.direction < 0 ? -layout.width * state.progress : layout.width * state.progress;
     const enterX = state.direction < 0 ? layout.width * (1 - state.progress) : -layout.width * (1 - state.progress);
-    drawPauseInfoImage(infoPageImages[state.currentIndex], layout.x + exitX, layout.y, layout.width, layout.height, 1 - state.progress);
-    drawPauseInfoImage(infoPageImages[state.nextIndex], layout.x + enterX, layout.y, layout.width, layout.height, state.progress);
+    drawPauseInfoImage(getInfoPageImage(state.currentIndex), layout.x + exitX, layout.y, layout.width, layout.height, 1 - state.progress);
+    drawPauseInfoImage(getInfoPageImage(state.nextIndex), layout.x + enterX, layout.y, layout.width, layout.height, state.progress);
   }
 
   function drawPauseInfoImage(image, x, y, width, height, alpha) {
     ctx.save();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha *= alpha;
     if (image && image.complete && image.naturalWidth > 0) {
       ctx.drawImage(image, x, y, width, height);
     } else {
@@ -2007,9 +2272,11 @@
 
       if (running) {
         update(delta);
+      } else if (levelClearState.active) {
+        updateLevelClearTransition(delta);
       } else if (!suzy.awake) {
         suzy.sleepTime += delta;
-        updateCat2(delta);
+        if (cat2Enabled) updateCat2(delta);
       }
 
       draw();
@@ -2091,7 +2358,7 @@
   }
 
   function getPauseInfoAction(point) {
-    if (!paused || !running) return null;
+    if (!((paused && running) || levelClearState.active)) return null;
     const layout = getPauseInfoLayout();
     const centerY = layout.y + layout.height / 2;
     const leftX = layout.x - layout.arrowOffset;
@@ -2116,6 +2383,29 @@
     if (action.type === "drag") {
       startInfoDrag(event, gameStage);
       return true;
+    }
+    return true;
+  }
+
+  function getLevelClearTapRect() {
+    return getLevelClearLayout().tapRect;
+  }
+
+  function handleLevelClearPointerDown(event) {
+    if (!levelClearState.active) return false;
+    event.preventDefault();
+    const action = getPauseInfoAction(getCanvasPoint(event));
+    if (action && action.type === "arrow") {
+      switchInfoPage(action.direction);
+      return true;
+    }
+    if (action && action.type === "drag") {
+      startInfoDrag(event, gameStage);
+      return true;
+    }
+    if (!levelClearState.allowContinue || levelClearState.exiting) return true;
+    if (isPointInsideRect(getCanvasPoint(event), getLevelClearTapRect())) {
+      continueLevelClearTransition();
     }
     return true;
   }
@@ -2259,6 +2549,7 @@
 
   gameStage.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".debug-panel, button, input, label")) return;
+    if (handleLevelClearPointerDown(event)) return;
     if (handlePauseInfoPointerDown(event)) return;
     if (startJukeboxPress(event)) return;
     if (!isInDragControlArea(event)) return;
@@ -2316,6 +2607,10 @@
 
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
+    if (levelClearState.active) {
+      event.preventDefault();
+      return;
+    }
     if (["arrowleft", "arrowright", "a", "d", " "].includes(key)) {
       event.preventDefault();
     }
