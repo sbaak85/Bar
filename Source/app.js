@@ -1617,7 +1617,7 @@
         currentLevelScore += earnedPoints;
         playCatchSound();
         if (isIosSafariLike) {
-          addSplashNextFrame(glass.x, trayTop + 30, glass.type.color, `+${earnedPoints}`, glass.type.font, {
+          addSplashNextFrame(glass.x, trayTop - 15, glass.type.color, `+${earnedPoints}`, glass.type.font, {
             staticText: true,
             life: 0.2,
           });
