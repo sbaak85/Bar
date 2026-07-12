@@ -798,11 +798,15 @@
     const platform = navigator.platform || "";
     const isIosDevice = /iPad|iPhone|iPod/.test(platform) ||
       (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isAndroidDevice = /Android/i.test(userAgent);
     const isSafari = /Safari/i.test(userAgent) &&
       !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS/i.test(userAgent);
     isIosSafariLike = isIosDevice || isSafari;
     if (isIosSafariLike) {
       document.documentElement.classList.add("is-ios-safari");
+    }
+    if (isIosSafariLike || isAndroidDevice) {
+      document.documentElement.classList.add("is-compact-mobile-ui");
     }
   }
 
@@ -829,7 +833,14 @@
   function syncUiScale() {
     const rect = gameStage.getBoundingClientRect();
     if (!rect || !Number.isFinite(rect.width) || rect.width <= 0) return;
-    const scale = Math.max(0.25, Math.min(1, rect.width / WIDTH));
+    const viewport = window.visualViewport;
+    const viewportWidth = viewport && viewport.width ? viewport.width : window.innerWidth;
+    const viewportHeight = viewport && viewport.height ? viewport.height : window.innerHeight;
+    const fullscreenStageWidth = Math.min(viewportWidth, viewportHeight * (WIDTH / HEIGHT));
+    const widthBasis = appFullscreenActive && Number.isFinite(fullscreenStageWidth) && fullscreenStageWidth > 0
+      ? Math.min(rect.width, fullscreenStageWidth)
+      : rect.width;
+    const scale = Math.max(0.25, Math.min(1, widthBasis / WIDTH));
     document.documentElement.style.setProperty("--ui-scale", scale.toFixed(4));
   }
 
