@@ -216,6 +216,7 @@
   const MAX_LIVES = 3;
   const INFO_TRANSITION_MS = 360;
   const INFO_DRAG_THRESHOLD = 42;
+  const INFO_DRAG_INTENT_THRESHOLD = 8;
   const LEVEL_ONE_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.3;
   const LEVEL_TWO_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.8;
   const LEVEL_CLEAR_TAP_DELAY = 1;
@@ -251,7 +252,10 @@
     active: false,
     pointerId: null,
     startClientX: 0,
+    startClientY: 0,
     lastClientX: 0,
+    horizontalIntent: false,
+    captured: false,
     target: null,
   };
   const jukeboxPress = {
@@ -274,6 +278,10 @@
   let score = 0;
   let combo = 0;
   let catchCount = 0;
+  let carriedScore = 0;
+  let carriedCatchCount = 0;
+  let currentLevelScore = 0;
+  let currentLevelCatchCount = 0;
   let missCount = 0;
   let lives = MAX_LIVES;
   let timeLeft = ROUND_SECONDS;
@@ -296,6 +304,7 @@
   let loadingPhase = "black";
   let loadingTimer = null;
   let loadingCompleted = false;
+  let skipNextCupOpenSound = false;
   let countdownActive = false;
   let countdownTime = 0;
   let infoPageIndex = 0;
@@ -320,6 +329,12 @@
     exiting: false,
     exitTime: 0,
     allowContinue: false,
+  };
+  const initialInfoState = {
+    active: false,
+    elapsed: 0,
+    exiting: false,
+    exitTime: 0,
   };
 
   const tray = {
@@ -375,10 +390,18 @@
     levelClearState.exiting = false;
     levelClearState.exitTime = 0;
     levelClearState.allowContinue = false;
+    initialInfoState.active = false;
+    initialInfoState.elapsed = 0;
+    initialInfoState.exiting = false;
+    initialInfoState.exitTime = 0;
     levelClearConfetti = [];
     score = 0;
     combo = 0;
     catchCount = 0;
+    carriedScore = 0;
+    carriedCatchCount = 0;
+    currentLevelScore = 0;
+    currentLevelCatchCount = 0;
     missCount = 0;
     lives = MAX_LIVES;
     timeLeft = ROUND_SECONDS;
@@ -413,10 +436,15 @@
     lastTime = performance.now();
     updateHud();
     messagePanel.classList.add("is-hidden");
+    gameStage.classList.remove("is-initial-info");
     startButton.blur();
     pauseButton.textContent = "暫停";
     draw();
-    playSound(eventSounds.cupOpen);
+    if (skipNextCupOpenSound) {
+      skipNextCupOpenSound = false;
+    } else {
+      playSound(eventSounds.cupOpen);
+    }
     startVoiceLoopFadeIn();
     if (firstGameplayStart) {
       firstGameplayStart = false;
@@ -434,9 +462,7 @@
     keys.clear();
     if (dragControl.pointerId !== null) {
       try {
-        if (gameStage.hasPointerCapture(dragControl.pointerId)) {
-          gameStage.releasePointerCapture(dragControl.pointerId);
-        }
+        releaseStagePointer(dragControl.pointerId);
       } catch {
         // The pointer may already be gone when a round ends under an active hold.
       }
@@ -528,6 +554,18 @@
     }, LOADING_TAP_FADE_MS);
   }
 
+  function startInitialInfoOverlay() {
+    if (!firstGameplayStart) return;
+    initialInfoState.active = true;
+    initialInfoState.elapsed = 0;
+    initialInfoState.exiting = false;
+    initialInfoState.exitTime = 0;
+    resetInfoPage();
+    messagePanel.classList.add("is-hidden");
+    gameStage.classList.add("is-initial-info");
+    draw();
+  }
+
   function finishLoadingSequence() {
     if (!loadingOverlay || loadingCompleted || loadingPhase !== "tapReady") return;
     clearLoadingTimer();
@@ -537,6 +575,7 @@
     loadingTimer = window.setTimeout(() => {
       loadingCompleted = true;
       loadingPhase = "done";
+      startInitialInfoOverlay();
       loadingOverlay.classList.add("is-hidden");
       clearLoadingTimer();
     }, LOADING_EXIT_MS);
@@ -544,6 +583,7 @@
 
   function handleLoadingPointer(event) {
     if (loadingCompleted || !loadingOverlay || loadingOverlay.classList.contains("is-hidden")) return;
+    event.stopPropagation();
     event.preventDefault();
     playBgm();
     if (loadingPhase === "black") {
@@ -603,6 +643,9 @@
 
   function getCanvasPoint(event) {
     const rect = gameStage.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return { x: WIDTH / 2, y: HEIGHT / 2 };
+    }
     return {
       x: ((event.clientX - rect.left) / rect.width) * WIDTH,
       y: ((event.clientY - rect.top) / rect.height) * HEIGHT,
@@ -665,7 +708,7 @@
     dragControl.pointerX = getCanvasPoint(event).x;
     dragControl.direction = direction;
     dragControl.reverseDistance = 0;
-    gameStage.setPointerCapture(event.pointerId);
+    captureStagePointer(event.pointerId);
   }
 
   function playSound(sound) {
@@ -738,6 +781,31 @@
     image.src = src;
     image.addEventListener("load", draw);
     return image;
+  }
+
+  function syncViewportHeight() {
+    const viewport = window.visualViewport;
+    const height = viewport && viewport.height ? viewport.height : window.innerHeight;
+    if (!Number.isFinite(height) || height <= 0) return;
+    document.documentElement.style.setProperty("--app-height", `${Math.max(320, Math.round(height))}px`);
+  }
+
+  function captureStagePointer(pointerId) {
+    if (!gameStage.setPointerCapture) return;
+    try {
+      gameStage.setPointerCapture(pointerId);
+    } catch {
+      // Safari can reject capture during native gestures; gameplay should continue without capture.
+    }
+  }
+
+  function releaseStagePointer(pointerId) {
+    if (!gameStage.releasePointerCapture || !gameStage.hasPointerCapture) return;
+    try {
+      if (gameStage.hasPointerCapture(pointerId)) gameStage.releasePointerCapture(pointerId);
+    } catch {
+      // Pointer capture may already be gone after a touch cancel or orientation change.
+    }
   }
 
   function getActiveInfoPageIndexes() {
@@ -940,6 +1008,7 @@
   }
 
   function showMessage(title, text, buttonText, mode = "") {
+    gameStage.classList.remove("is-initial-info");
     messagePanel.classList.remove("is-info");
     messagePanel.querySelector("h1").textContent = title;
     const messageText = messagePanel.querySelector("p");
@@ -951,6 +1020,18 @@
     }
     startButton.textContent = buttonText;
     messagePanel.classList.remove("is-hidden");
+  }
+
+  function getSavedBottleScore() {
+    return currentLevel >= 2 ? carriedScore + currentLevelScore : score;
+  }
+
+  function getSavedBottleCatchCount() {
+    return currentLevel >= 2 ? carriedCatchCount + currentLevelCatchCount : catchCount;
+  }
+
+  function getSavedBottleResultText() {
+    return `你拯救了 ${getSavedBottleScore()} 元的酒瓶，共接住 ${getSavedBottleCatchCount()} 個。`;
   }
 
   function getFailMessage() {
@@ -1100,6 +1181,10 @@
     gameOver = false;
     countdownActive = false;
     combo = 0;
+    carriedScore = score;
+    carriedCatchCount = catchCount;
+    currentLevelScore = 0;
+    currentLevelCatchCount = 0;
     currentLevel = 2;
     cat2Enabled = true;
     timeLeft = ROUND_SECONDS;
@@ -1175,6 +1260,26 @@
     levelClearState.exitTime = 0;
   }
 
+  function continueInitialInfoOverlay() {
+    if (!initialInfoState.active || initialInfoState.exiting) return;
+    initialInfoState.exiting = true;
+    initialInfoState.exitTime = 0;
+    playSound(eventSounds.cupOpen);
+    skipNextCupOpenSound = true;
+  }
+
+  function updateInitialInfoOverlay(delta) {
+    if (!initialInfoState.active) return;
+    initialInfoState.elapsed += delta;
+    if (!suzy.awake) suzy.sleepTime += delta;
+    if (initialInfoState.exiting) {
+      initialInfoState.exitTime += delta;
+      if (initialInfoState.exitTime >= LEVEL_CLEAR_FADE_SECONDS) {
+        resetGame();
+      }
+    }
+  }
+
   function update(delta) {
     if (!running || paused) return;
 
@@ -1238,7 +1343,7 @@
         return;
       }
       playSound(eventSounds.cupClose);
-      endGame("時間到", `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次");
+      endGame("時間到", getSavedBottleResultText(), "再玩一次");
       return;
     }
 
@@ -1294,8 +1399,10 @@
 
         combo += 1;
         catchCount += 1;
+        currentLevelCatchCount += 1;
         const earnedPoints = glass.type.points + Math.min(combo * 2, 80);
         score += earnedPoints;
+        currentLevelScore += earnedPoints;
         playCatchSound();
         addCatchSparks(glass.x, trayTop + 2);
         addSplash(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
@@ -1318,7 +1425,7 @@
         playMissSound();
         addImageSplash(glass.x, HEIGHT - 44, missPopupImage, 110);
         if (lives <= 0) {
-          endGame("收攤", `${getFailMessage()}\n你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`, "再玩一次", "fail");
+          endGame("收攤", `${getFailMessage()}\n${getSavedBottleResultText()}`, "再玩一次", "fail");
           return;
         }
       }
@@ -2084,6 +2191,24 @@
     ctx.restore();
   }
 
+  function drawInitialInfoOverlay() {
+    const fadeIn = Math.min(1, initialInfoState.elapsed / LEVEL_CLEAR_FADE_SECONDS);
+    const exitFade = initialInfoState.exiting
+      ? Math.max(0, 1 - initialInfoState.exitTime / LEVEL_CLEAR_FADE_SECONDS)
+      : 1;
+    const alpha = fadeIn * exitFade;
+    const infoLayout = getPauseInfoLayout();
+
+    ctx.save();
+    ctx.fillStyle = `rgba(18, 8, 7, ${0.58 * alpha})`;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.globalAlpha = alpha;
+    drawPauseInfoPages(infoLayout);
+    drawPauseInfoArrows(infoLayout);
+    drawInitialInfoStartText();
+    ctx.restore();
+  }
+
   function drawLevelClearConfetti() {
     const fadeOut = Math.max(0, 1 - Math.max(0, levelClearState.elapsed - LEVEL_CLEAR_CONFETTI_SECONDS) / 0.75);
     if (fadeOut <= 0) return;
@@ -2126,7 +2251,7 @@
     ctx.strokeStyle = "rgba(35, 18, 10, 0.86)";
     ctx.lineWidth = 4.5;
     ctx.font = "800 23px Microsoft JhengHei, sans-serif";
-    const resultText = `你拯救了 ${score} 元的酒瓶，共接住 ${catchCount} 個。`;
+    const resultText = getSavedBottleResultText();
     ctx.strokeText(resultText, WIDTH / 2, resultY);
     ctx.fillText(resultText, WIDTH / 2, resultY);
 
@@ -2139,6 +2264,26 @@
       ctx.strokeText("Tap to continue", WIDTH / 2, tapCenterY);
       ctx.fillText("Tap to continue", WIDTH / 2, tapCenterY);
     }
+    ctx.restore();
+  }
+
+  function drawInitialInfoStartText() {
+    const { tapCenterY } = getLevelClearLayout();
+    const pulse = (Math.sin(performance.now() / 360) + 1) / 2;
+    const baseAlpha = ctx.globalAlpha;
+
+    ctx.save();
+    ctx.globalAlpha = baseAlpha * (0.55 + pulse * 0.45);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff7dc";
+    ctx.strokeStyle = "rgba(35, 18, 10, 0.86)";
+    ctx.font = "900 31px Microsoft JhengHei, sans-serif";
+    ctx.lineWidth = 6;
+    ctx.shadowColor = `rgba(255, 247, 220, ${0.26 + pulse * 0.42})`;
+    ctx.shadowBlur = 6 + pulse * 13;
+    ctx.strokeText("Tap to Start", WIDTH / 2, tapCenterY);
+    ctx.fillText("Tap to Start", WIDTH / 2, tapCenterY);
     ctx.restore();
   }
 
@@ -2162,6 +2307,7 @@
     splashes.forEach(drawSplash);
     drawCountdown();
     drawFinalCountdown();
+    if (initialInfoState.active) drawInitialInfoOverlay();
     if (levelClearState.active) drawLevelClearTransitionOverlay();
 
     if (paused && running) drawPauseOverlay();
@@ -2272,6 +2418,8 @@
 
       if (running) {
         update(delta);
+      } else if (initialInfoState.active) {
+        updateInitialInfoOverlay(delta);
       } else if (levelClearState.active) {
         updateLevelClearTransition(delta);
       } else if (!suzy.awake) {
@@ -2311,54 +2459,86 @@
 
   function startInfoDrag(event, target) {
     if (infoTransition) return false;
-    event.preventDefault();
     infoDrag.active = true;
     infoDrag.pointerId = event.pointerId;
     infoDrag.startClientX = event.clientX;
+    infoDrag.startClientY = event.clientY;
     infoDrag.lastClientX = event.clientX;
+    infoDrag.horizontalIntent = false;
+    infoDrag.captured = false;
     infoDrag.target = target;
-    if (target && target.setPointerCapture) {
-      try {
-        target.setPointerCapture(event.pointerId);
-      } catch {
-        // Pointer capture can fail if the pointer is already owned by another element.
-      }
-    }
     return true;
+  }
+
+  function captureInfoDragPointer() {
+    if (!infoDrag.target || infoDrag.captured || !infoDrag.target.setPointerCapture) return;
+    try {
+      infoDrag.target.setPointerCapture(infoDrag.pointerId);
+      infoDrag.captured = true;
+    } catch {
+      // Pointer capture can fail if the browser has already claimed the gesture for scrolling.
+    }
+  }
+
+  function releaseInfoDragPointer() {
+    if (!infoDrag.target || !infoDrag.captured || !infoDrag.target.hasPointerCapture || !infoDrag.target.releasePointerCapture) return;
+    try {
+      if (infoDrag.target.hasPointerCapture(infoDrag.pointerId)) {
+        infoDrag.target.releasePointerCapture(infoDrag.pointerId);
+      }
+    } catch {
+      // The pointer may have been cancelled by a native scroll or browser gesture.
+    }
+  }
+
+  function updateInfoDragIntent(event) {
+    const deltaX = event.clientX - infoDrag.startClientX;
+    const deltaY = event.clientY - infoDrag.startClientY;
+    if (!infoDrag.horizontalIntent && Math.hypot(deltaX, deltaY) >= INFO_DRAG_INTENT_THRESHOLD) {
+      infoDrag.horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
+      if (infoDrag.horizontalIntent) captureInfoDragPointer();
+    }
+    return infoDrag.horizontalIntent;
   }
 
   function updateInfoDrag(event) {
     if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
-    event.preventDefault();
     infoDrag.lastClientX = event.clientX;
+    if (!updateInfoDragIntent(event)) return false;
+    event.preventDefault();
     return true;
   }
 
   function finishInfoDrag(event) {
     if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
-    event.preventDefault();
     infoDrag.lastClientX = event.clientX;
+    const shouldHandle = updateInfoDragIntent(event);
+    if (shouldHandle) {
+      event.preventDefault();
+    }
     const deltaX = infoDrag.lastClientX - infoDrag.startClientX;
-    if (Math.abs(deltaX) >= INFO_DRAG_THRESHOLD) {
+    if (shouldHandle && Math.abs(deltaX) >= INFO_DRAG_THRESHOLD) {
       switchInfoPage(deltaX < 0 ? -1 : 1);
     }
-    if (infoDrag.target && infoDrag.target.hasPointerCapture && infoDrag.target.hasPointerCapture(event.pointerId)) {
-      infoDrag.target.releasePointerCapture(event.pointerId);
-    }
+    releaseInfoDragPointer();
     resetInfoDrag();
-    return true;
+    return shouldHandle;
   }
 
   function resetInfoDrag() {
+    releaseInfoDragPointer();
     infoDrag.active = false;
     infoDrag.pointerId = null;
     infoDrag.startClientX = 0;
+    infoDrag.startClientY = 0;
     infoDrag.lastClientX = 0;
+    infoDrag.horizontalIntent = false;
+    infoDrag.captured = false;
     infoDrag.target = null;
   }
 
   function getPauseInfoAction(point) {
-    if (!((paused && running) || levelClearState.active)) return null;
+    if (!((paused && running) || levelClearState.active || initialInfoState.active)) return null;
     const layout = getPauseInfoLayout();
     const centerY = layout.y + layout.height / 2;
     const leftX = layout.x - layout.arrowOffset;
@@ -2375,8 +2555,8 @@
   function handlePauseInfoPointerDown(event) {
     const action = getPauseInfoAction(getCanvasPoint(event));
     if (!action) return false;
-    event.preventDefault();
     if (action.type === "arrow") {
+      event.preventDefault();
       switchInfoPage(action.direction);
       return true;
     }
@@ -2393,9 +2573,9 @@
 
   function handleLevelClearPointerDown(event) {
     if (!levelClearState.active) return false;
-    event.preventDefault();
     const action = getPauseInfoAction(getCanvasPoint(event));
     if (action && action.type === "arrow") {
+      event.preventDefault();
       switchInfoPage(action.direction);
       return true;
     }
@@ -2405,7 +2585,27 @@
     }
     if (!levelClearState.allowContinue || levelClearState.exiting) return true;
     if (isPointInsideRect(getCanvasPoint(event), getLevelClearTapRect())) {
+      event.preventDefault();
       continueLevelClearTransition();
+    }
+    return true;
+  }
+
+  function handleInitialInfoPointerDown(event) {
+    if (!initialInfoState.active) return false;
+    const action = getPauseInfoAction(getCanvasPoint(event));
+    if (action && action.type === "arrow") {
+      event.preventDefault();
+      switchInfoPage(action.direction);
+      return true;
+    }
+    if (action && action.type === "drag") {
+      startInfoDrag(event, gameStage);
+      return true;
+    }
+    if (!initialInfoState.exiting && isPointInsideRect(getCanvasPoint(event), getLevelClearTapRect())) {
+      event.preventDefault();
+      continueInitialInfoOverlay();
     }
     return true;
   }
@@ -2417,7 +2617,7 @@
     jukeboxPress.pointerId = event.pointerId;
     jukeboxPress.startClientX = event.clientX;
     jukeboxPress.startClientY = event.clientY;
-    gameStage.setPointerCapture(event.pointerId);
+    captureStagePointer(event.pointerId);
     return true;
   }
 
@@ -2440,15 +2640,31 @@
     event.preventDefault();
     jukeboxPress.active = false;
     jukeboxPress.pointerId = null;
-    if (gameStage.hasPointerCapture(event.pointerId)) {
-      gameStage.releasePointerCapture(event.pointerId);
-    }
+    releaseStagePointer(event.pointerId);
     if (!canceled) queueBgmSwitch();
     return true;
   }
 
   if (loadingOverlay) {
     loadingOverlay.addEventListener("pointerdown", handleLoadingPointer);
+  }
+
+  if (messagePanel) {
+    messagePanel.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    messagePanel.addEventListener("pointermove", (event) => {
+      updateInfoDrag(event);
+      event.stopPropagation();
+    });
+    messagePanel.addEventListener("pointerup", (event) => {
+      finishInfoDrag(event);
+      event.stopPropagation();
+    });
+    messagePanel.addEventListener("pointercancel", (event) => {
+      finishInfoDrag(event);
+      event.stopPropagation();
+    });
   }
 
   startButton.addEventListener("click", resetGame);
@@ -2549,6 +2765,7 @@
 
   gameStage.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".debug-panel, button, input, label")) return;
+    if (handleInitialInfoPointerDown(event)) return;
     if (handleLevelClearPointerDown(event)) return;
     if (handlePauseInfoPointerDown(event)) return;
     if (startJukeboxPress(event)) return;
@@ -2579,9 +2796,7 @@
     dragControl.pointerX = 0;
     dragControl.direction = 0;
     dragControl.reverseDistance = 0;
-    if (gameStage.hasPointerCapture(event.pointerId)) {
-      gameStage.releasePointerCapture(event.pointerId);
-    }
+    releaseStagePointer(event.pointerId);
   }
 
   gameStage.addEventListener("pointerup", (event) => {
@@ -2607,6 +2822,13 @@
 
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
+    if (initialInfoState.active) {
+      if (key === " " || key === "enter") {
+        event.preventDefault();
+        continueInitialInfoOverlay();
+      }
+      return;
+    }
     if (levelClearState.active) {
       event.preventDefault();
       return;
@@ -2626,6 +2848,17 @@
     const key = event.key.toLowerCase();
     keys.delete(key === "arrowleft" || key === "arrowright" ? event.key : key);
   });
+
+  syncViewportHeight();
+  window.addEventListener("resize", syncViewportHeight, { passive: true });
+  window.addEventListener("orientationchange", () => {
+    window.setTimeout(syncViewportHeight, 80);
+    window.setTimeout(syncViewportHeight, 320);
+  }, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", syncViewportHeight, { passive: true });
+    window.visualViewport.addEventListener("scroll", syncViewportHeight, { passive: true });
+  }
 
   updateBgmButton();
   debugReverseDistance.value = String(dragControl.reverseSwitchDistance);

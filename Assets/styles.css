@@ -1,5 +1,7 @@
 :root {
   color-scheme: dark;
+  --app-height: 100vh;
+  --shell-gap: 18px;
   --paper: #fff7dc;
   --ink: #2b1810;
   --amber: #d89135;
@@ -17,12 +19,14 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(circle at 22% 16%, rgba(232, 189, 101, 0.28), transparent 26%),
     linear-gradient(145deg, #25110e 0%, #3b1718 43%, #102f33 100%);
   color: var(--paper);
   font-family: "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
 button {
@@ -31,23 +35,30 @@ button {
 }
 
 .game-shell {
-  min-height: 100vh;
+  min-height: var(--app-height);
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: var(--shell-gap);
 }
 
 .game-stage {
   position: relative;
-  width: min(100%, 1280px);
+  width: calc(100vw - (var(--shell-gap) * 2));
+  max-width: 1280px;
+  width: min(
+    calc(100vw - (var(--shell-gap) * 2)),
+    1280px,
+    calc((var(--app-height) - (var(--shell-gap) * 2)) * 16 / 9)
+  );
   aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 36px);
   border: 3px solid rgba(232, 189, 101, 0.72);
   box-shadow: 0 28px 70px var(--shadow);
   overflow: hidden;
   background: #1b0d0c;
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #gameCanvas {
@@ -55,7 +66,7 @@ button {
   width: 100%;
   height: 100%;
   image-rendering: auto;
-  touch-action: none;
+  touch-action: pan-y pinch-zoom;
 }
 
 .loading-overlay {
@@ -200,6 +211,7 @@ button {
   display: flex;
   gap: 10px;
   pointer-events: none;
+  transition: filter 260ms ease, opacity 260ms ease;
 }
 
 .top-hud {
@@ -211,6 +223,7 @@ button {
   padding: 8px 12px;
   border: 1px solid rgba(255, 247, 220, 0.34);
   background: rgba(38, 18, 13, 0.72);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -276,7 +289,9 @@ button {
   padding: 24px;
   text-align: center;
   background: rgba(18, 8, 7, 0.58);
+  -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
+  touch-action: pan-y pinch-zoom;
 }
 
 .message-panel.is-hidden {
@@ -298,10 +313,11 @@ button {
 .message-panel .info-page-frame {
   position: relative;
   width: auto;
-  width: min(72vw, 520px);
-  height: min(72vh, 560px);
+  height: 72%;
+  max-height: 560px;
+  aspect-ratio: 1024 / 1346;
   overflow: hidden;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
   cursor: grab;
 }
 
@@ -316,8 +332,8 @@ button {
   width: 100%;
   height: 100%;
   margin: auto;
-  max-width: min(72vw, 520px);
-  max-height: min(72vh, 560px);
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   backface-visibility: hidden;
   transform: translate3d(0, 0, 0);
@@ -439,6 +455,17 @@ button {
   min-height: 48px;
   background: rgba(255, 247, 220, 0.9);
   pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.game-stage.is-initial-info .controls button {
+  pointer-events: none;
+  filter: blur(2px) brightness(0.72);
+}
+
+.game-stage.is-initial-info .hud {
+  opacity: 0.38;
+  filter: blur(4px) brightness(0.48);
 }
 
 #leftButton {
@@ -575,31 +602,108 @@ button {
 }
 
 @media (max-width: 680px) {
-  .game-shell {
-    padding: 8px;
+  :root {
+    --shell-gap: 8px;
   }
 
-  .game-stage {
-    max-height: calc(100vh - 16px);
+  .message-panel {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .message-panel .info-slider {
+    grid-template-columns: 34px auto 34px;
+    column-gap: 7px;
+  }
+
+  .message-panel .info-page-frame {
+    height: 72%;
+    max-height: 420px;
+  }
+
+  .message-panel .info-arrow {
+    width: 34px;
+    height: 58px;
+    min-width: 34px;
+    min-height: 58px;
+  }
+
+  .message-panel .info-arrow-left::before {
+    border-top-width: 12px;
+    border-bottom-width: 12px;
+    border-right-width: 18px;
+  }
+
+  .message-panel .info-arrow-right::before {
+    border-top-width: 12px;
+    border-bottom-width: 12px;
+    border-left-width: 18px;
   }
 
   .hud {
     left: 8px;
     right: 8px;
-    gap: 6px;
+    top: 44px;
+    gap: 4px;
   }
 
   .hud-block {
     min-width: 0;
     flex: 1;
-    padding: 6px;
+    padding: 4px;
   }
 
   .hud-block strong {
-    font-size: 20px;
+    font-size: clamp(15px, 5vw, 20px);
   }
 
   .hud-label {
-    font-size: 11px;
+    font-size: 10px;
+  }
+
+  .hud-block .life-hearts {
+    width: clamp(49px, 16vw, 83px);
+    min-width: clamp(49px, 16vw, 83px);
+    min-height: 18px;
+    gap: 2px;
+  }
+
+  .hud-block .life-hearts img {
+    width: clamp(15px, 4.8vw, 25px);
+    height: clamp(15px, 4.8vw, 25px);
+  }
+
+  #leftButton,
+  #rightButton {
+    width: clamp(84px, 24%, 122px);
+  }
+
+  #pauseButton,
+  #bgmButton,
+  .debug-toggle {
+    min-height: 28px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  #pauseButton {
+    top: 6px;
+    right: 124px;
+    min-width: 48px;
+  }
+
+  #bgmButton {
+    top: 6px;
+    right: 54px;
+    min-width: 64px;
+  }
+
+  .debug-panel {
+    top: 6px;
+    right: 6px;
+  }
+
+  .debug-toggle {
+    min-width: 42px;
   }
 }
