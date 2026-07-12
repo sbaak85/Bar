@@ -217,8 +217,7 @@
   const ROUND_SECONDS = 60;
   const MAX_LIVES = 3;
   const INFO_TRANSITION_MS = 360;
-  const INFO_DRAG_THRESHOLD = 42;
-  const INFO_DRAG_INTENT_THRESHOLD = 8;
+  const INFO_DRAG_THRESHOLD = 30;
   const LEVEL_ONE_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.3;
   const LEVEL_TWO_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER = 1.8;
   const LEVEL_CLEAR_TAP_DELAY = 1;
@@ -256,7 +255,6 @@
     startClientX: 0,
     startClientY: 0,
     lastClientX: 0,
-    horizontalIntent: false,
     captured: false,
     target: null,
   };
@@ -441,6 +439,7 @@
     updateHud();
     messagePanel.classList.add("is-hidden");
     gameStage.classList.remove("is-initial-info");
+    gameStage.classList.remove("is-info-overlay");
     startButton.blur();
     pauseButton.textContent = "暫停";
     draw();
@@ -567,6 +566,7 @@
     resetInfoPage();
     messagePanel.classList.add("is-hidden");
     gameStage.classList.add("is-initial-info");
+    gameStage.classList.add("is-info-overlay");
     draw();
   }
 
@@ -1034,6 +1034,7 @@
 
   function showMessage(title, text, buttonText, mode = "") {
     gameStage.classList.remove("is-initial-info");
+    gameStage.classList.remove("is-info-overlay");
     messagePanel.classList.remove("is-info");
     messagePanel.querySelector("h1").textContent = title;
     const messageText = messagePanel.querySelector("p");
@@ -1219,6 +1220,7 @@
     resetRoundVisualsForLevelClear();
     createLevelClearConfetti();
     resetInfoPage();
+    gameStage.classList.add("is-info-overlay");
     levelClearState.active = true;
     levelClearState.elapsed = 0;
     levelClearState.exiting = false;
@@ -1262,6 +1264,7 @@
     levelClearState.exitTime = 0;
     levelClearState.allowContinue = false;
     levelClearConfetti = [];
+    gameStage.classList.remove("is-info-overlay");
     running = true;
     paused = false;
     gameOver = false;
@@ -2532,14 +2535,15 @@
 
   function startInfoDrag(event, target) {
     if (infoTransition) return false;
+    event.preventDefault();
     infoDrag.active = true;
     infoDrag.pointerId = event.pointerId;
     infoDrag.startClientX = event.clientX;
     infoDrag.startClientY = event.clientY;
     infoDrag.lastClientX = event.clientX;
-    infoDrag.horizontalIntent = false;
     infoDrag.captured = false;
     infoDrag.target = target;
+    captureInfoDragPointer();
     return true;
   }
 
@@ -2564,38 +2568,24 @@
     }
   }
 
-  function updateInfoDragIntent(event) {
-    const deltaX = event.clientX - infoDrag.startClientX;
-    const deltaY = event.clientY - infoDrag.startClientY;
-    if (!infoDrag.horizontalIntent && Math.hypot(deltaX, deltaY) >= INFO_DRAG_INTENT_THRESHOLD) {
-      infoDrag.horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
-      if (infoDrag.horizontalIntent) captureInfoDragPointer();
-    }
-    return infoDrag.horizontalIntent;
-  }
-
   function updateInfoDrag(event) {
     if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
-    infoDrag.lastClientX = event.clientX;
-    if (!updateInfoDragIntent(event)) return false;
     event.preventDefault();
+    infoDrag.lastClientX = event.clientX;
     return true;
   }
 
   function finishInfoDrag(event) {
     if (!infoDrag.active || event.pointerId !== infoDrag.pointerId) return false;
+    event.preventDefault();
     infoDrag.lastClientX = event.clientX;
-    const shouldHandle = updateInfoDragIntent(event);
-    if (shouldHandle) {
-      event.preventDefault();
-    }
     const deltaX = infoDrag.lastClientX - infoDrag.startClientX;
-    if (shouldHandle && Math.abs(deltaX) >= INFO_DRAG_THRESHOLD) {
+    if (Math.abs(deltaX) >= INFO_DRAG_THRESHOLD) {
       switchInfoPage(deltaX < 0 ? -1 : 1);
     }
     releaseInfoDragPointer();
     resetInfoDrag();
-    return shouldHandle;
+    return true;
   }
 
   function resetInfoDrag() {
@@ -2605,7 +2595,6 @@
     infoDrag.startClientX = 0;
     infoDrag.startClientY = 0;
     infoDrag.lastClientX = 0;
-    infoDrag.horizontalIntent = false;
     infoDrag.captured = false;
     infoDrag.target = null;
   }
@@ -2765,9 +2754,11 @@
     pauseButton.textContent = paused ? "繼續" : "暫停";
     if (paused) {
       resetInfoPage();
+      gameStage.classList.add("is-info-overlay");
       bgm.pause();
       voiceLoop.pause();
     } else {
+      gameStage.classList.remove("is-info-overlay");
       playBgm();
       voiceLoop.play().catch(() => {
         // Browsers may block audio until a direct user gesture is accepted.

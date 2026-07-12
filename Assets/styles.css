@@ -62,12 +62,20 @@ button {
   -webkit-touch-callout: none;
 }
 
+.game-stage.is-info-overlay {
+  touch-action: none;
+}
+
 #gameCanvas {
   display: block;
   width: 100%;
   height: 100%;
   image-rendering: auto;
   touch-action: pan-y pinch-zoom;
+}
+
+.game-stage.is-info-overlay #gameCanvas {
+  touch-action: none;
 }
 
 .loading-overlay {
@@ -326,6 +334,10 @@ button {
   overflow: hidden;
   touch-action: pan-y pinch-zoom;
   cursor: grab;
+}
+
+.message-panel .info-page-frame {
+  touch-action: none;
 }
 
 .message-panel .info-page-frame:active {
