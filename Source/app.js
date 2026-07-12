@@ -788,6 +788,15 @@
     const height = viewport && viewport.height ? viewport.height : window.innerHeight;
     if (!Number.isFinite(height) || height <= 0) return;
     document.documentElement.style.setProperty("--app-height", `${Math.max(320, Math.round(height))}px`);
+    syncUiScale();
+    window.requestAnimationFrame(syncUiScale);
+  }
+
+  function syncUiScale() {
+    const rect = gameStage.getBoundingClientRect();
+    if (!rect || !Number.isFinite(rect.width) || rect.width <= 0) return;
+    const scale = Math.max(0.25, Math.min(1, rect.width / WIDTH));
+    document.documentElement.style.setProperty("--ui-scale", scale.toFixed(4));
   }
 
   function captureStagePointer(pointerId) {

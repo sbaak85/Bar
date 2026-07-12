@@ -2,6 +2,7 @@
   color-scheme: dark;
   --app-height: 100vh;
   --shell-gap: 18px;
+  --ui-scale: 1;
   --paper: #fff7dc;
   --ink: #2b1810;
   --amber: #d89135;
@@ -206,21 +207,23 @@ button {
 
 .hud {
   position: absolute;
-  left: 18px;
-  right: 18px;
+  left: calc(18px * var(--ui-scale));
+  right: auto;
   display: flex;
-  gap: 10px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: calc(10px * var(--ui-scale));
   pointer-events: none;
   transition: filter 260ms ease, opacity 260ms ease;
 }
 
 .top-hud {
-  top: 14px;
+  top: calc(14px * var(--ui-scale));
 }
 
 .hud-block {
-  min-width: 92px;
-  padding: 8px 12px;
+  min-width: calc(92px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border: 1px solid rgba(255, 247, 220, 0.34);
   background: rgba(38, 18, 13, 0.72);
   -webkit-backdrop-filter: blur(8px);
@@ -229,14 +232,14 @@ button {
 
 .hud-label {
   display: block;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   color: rgba(255, 247, 220, 0.72);
 }
 
 .hud-block strong {
   display: block;
   line-height: 1.05;
-  font-size: 26px;
+  font-size: calc(26px * var(--ui-scale));
   color: var(--brass);
 }
 
@@ -245,18 +248,18 @@ button {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
-  width: 83px;
-  min-width: 83px;
-  min-height: 27px;
+  gap: calc(4px * var(--ui-scale));
+  width: calc(83px * var(--ui-scale));
+  min-width: calc(83px * var(--ui-scale));
+  min-height: calc(27px * var(--ui-scale));
   white-space: nowrap;
 }
 
 .hud-block .life-hearts img {
   display: block;
   flex: 0 0 auto;
-  width: 25px;
-  height: 25px;
+  width: calc(25px * var(--ui-scale));
+  height: calc(25px * var(--ui-scale));
   object-fit: contain;
   transform-origin: center;
   will-change: transform, opacity;
@@ -641,36 +644,11 @@ button {
   }
 
   .hud {
-    left: 8px;
-    right: 8px;
-    top: 44px;
-    gap: 4px;
+    left: calc(8px * var(--ui-scale));
   }
 
   .hud-block {
-    min-width: 0;
-    flex: 1;
-    padding: 4px;
-  }
-
-  .hud-block strong {
-    font-size: clamp(15px, 5vw, 20px);
-  }
-
-  .hud-label {
-    font-size: 10px;
-  }
-
-  .hud-block .life-hearts {
-    width: clamp(49px, 16vw, 83px);
-    min-width: clamp(49px, 16vw, 83px);
-    min-height: 18px;
-    gap: 2px;
-  }
-
-  .hud-block .life-hearts img {
-    width: clamp(15px, 4.8vw, 25px);
-    height: clamp(15px, 4.8vw, 25px);
+    flex: 0 0 auto;
   }
 
   #leftButton,
