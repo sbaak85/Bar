@@ -230,6 +230,10 @@ button {
   backdrop-filter: blur(8px);
 }
 
+.time-hud-block {
+  display: none;
+}
+
 .hud-label {
   display: block;
   font-size: calc(12px * var(--ui-scale));
@@ -494,6 +498,11 @@ button {
   overflow: visible;
 }
 
+:root.is-ios-safari #leftButton,
+:root.is-ios-safari #rightButton {
+  width: clamp(86px, 9.5%, 128px);
+}
+
 #leftButton img,
 #rightButton img {
   display: block;
@@ -654,6 +663,11 @@ button {
   #leftButton,
   #rightButton {
     width: clamp(84px, 24%, 122px);
+  }
+
+  :root.is-ios-safari #leftButton,
+  :root.is-ios-safari #rightButton {
+    width: clamp(58px, 16%, 86px);
   }
 
   #pauseButton,

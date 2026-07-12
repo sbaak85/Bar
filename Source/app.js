@@ -108,6 +108,7 @@
   const lifePopupImage = loadImage("Assets/+life.png");
   const missPopupImage = loadImage("Assets/Font/Miss.png");
   const blackboardImage = loadImage("Assets/blackboard.png");
+  const timeIconImage = loadImage("Assets/Time.png");
   const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png", "Assets/Info_Page3.png"];
   const infoPageImages = infoPageSources.map(loadImage);
   const cat2Parts = {
@@ -116,6 +117,7 @@
     attack: loadImage("Assets/Yume/Cat_Attack.png"),
   };
   const bitmapFontImages = {
+    system: loadImage("Assets/Font/CHFont1.png"),
     gold: loadImage("Assets/Font/CHFont2.png"),
     copper: loadImage("Assets/Font/CHFont3.png"),
     green: loadImage("Assets/Font/CHFont4.png"),
@@ -290,6 +292,8 @@
   let applausePlayed = false;
   let voiceFadeActive = false;
   let voiceFadeTime = 0;
+  let lastTimeDisplayValue = null;
+  let timeFontPulseStart = -Infinity;
   let lastTime = 0;
   let running = false;
   let paused = false;
@@ -781,6 +785,18 @@
     image.src = src;
     image.addEventListener("load", draw);
     return image;
+  }
+
+  function markIosSafari() {
+    const userAgent = navigator.userAgent || "";
+    const platform = navigator.platform || "";
+    const isIosDevice = /iPad|iPhone|iPod/.test(platform) ||
+      (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isSafari = /Safari/i.test(userAgent) &&
+      !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS/i.test(userAgent);
+    if (isIosDevice || isSafari) {
+      document.documentElement.classList.add("is-ios-safari");
+    }
   }
 
   function syncViewportHeight() {
@@ -2094,6 +2110,47 @@
     }
   }
 
+  function drawTimeDisplay() {
+    const numericValue = Math.max(0, Math.ceil(timeLeft));
+    if (numericValue !== lastTimeDisplayValue) {
+      if (numericValue === 10) timeFontPulseStart = performance.now();
+      lastTimeDisplayValue = numericValue;
+    }
+
+    const value = String(numericValue);
+    const labelWidth = 92;
+    const labelRatio = timeIconImage && timeIconImage.complete && timeIconImage.naturalWidth > 0
+      ? timeIconImage.naturalHeight / timeIconImage.naturalWidth
+      : 90 / 240;
+    const labelHeight = labelWidth * labelRatio;
+    const x = WIDTH / 2;
+    const labelY = 6;
+    const numberBaselineY = labelY + labelHeight + 29;
+
+    ctx.save();
+    if (timeIconImage && timeIconImage.complete && timeIconImage.naturalWidth > 0) {
+      ctx.drawImage(timeIconImage, x - labelWidth / 2, labelY, labelWidth, labelHeight);
+    } else {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.font = "800 31px Microsoft JhengHei, sans-serif";
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = "rgba(35, 18, 10, 0.86)";
+      ctx.fillStyle = "#fff7dc";
+      ctx.strokeText("TIME", x, labelY);
+      ctx.fillText("TIME", x, labelY);
+    }
+    ctx.restore();
+
+    const pulseAge = (performance.now() - timeFontPulseStart) / 1000;
+    const pulseDuration = 0.34;
+    const pulseProgress = Math.max(0, Math.min(1, pulseAge / pulseDuration));
+    const pulseScale = pulseAge >= 0 && pulseAge < pulseDuration
+      ? 1 + Math.sin(Math.PI * pulseProgress) * 0.32
+      : 1;
+    drawBitmapText(value, x, numberBaselineY, timeLeft <= 10 ? "red" : "system", 0.27 * pulseScale);
+  }
+
   function drawInputAreaDebug() {
     const top = HEIGHT - 230;
     ctx.save();
@@ -2316,10 +2373,17 @@
     splashes.forEach(drawSplash);
     drawCountdown();
     drawFinalCountdown();
+    if (!initialInfoState.active && !levelClearState.active && !(paused && running)) drawTimeDisplay();
     if (initialInfoState.active) drawInitialInfoOverlay();
-    if (levelClearState.active) drawLevelClearTransitionOverlay();
+    if (levelClearState.active) {
+      drawLevelClearTransitionOverlay();
+      drawTimeDisplay();
+    }
 
-    if (paused && running) drawPauseOverlay();
+    if (paused && running) {
+      drawPauseOverlay();
+      drawTimeDisplay();
+    }
   }
 
   function drawPauseOverlay() {
@@ -2858,6 +2922,7 @@
     keys.delete(key === "arrowleft" || key === "arrowright" ? event.key : key);
   });
 
+  markIosSafari();
   syncViewportHeight();
   window.addEventListener("resize", syncViewportHeight, { passive: true });
   window.addEventListener("orientationchange", () => {
