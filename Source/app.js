@@ -250,6 +250,7 @@
     reverseDistance: 0,
     reverseSwitchDistance: 22,
   };
+  let isIosSafariLike = false;
   const infoDrag = {
     active: false,
     pointerId: null,
@@ -799,9 +800,17 @@
       (platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const isSafari = /Safari/i.test(userAgent) &&
       !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPiOS/i.test(userAgent);
-    if (isIosDevice || isSafari) {
+    isIosSafariLike = isIosDevice || isSafari;
+    if (isIosSafariLike) {
       document.documentElement.classList.add("is-ios-safari");
     }
+  }
+
+  function preventIosStageScrollDuringControl(event) {
+    if (!isIosSafariLike) return;
+    const target = event.target && event.target.closest ? event.target : event.target?.parentElement;
+    if (!target || !target.closest(".game-stage")) return;
+    if (dragControl.active || appFullscreenActive) event.preventDefault();
   }
 
   function syncViewportHeight() {
@@ -839,6 +848,7 @@
 
   function applyAppFullscreen(active) {
     appFullscreenActive = active;
+    document.documentElement.classList.toggle("is-app-fullscreen", active);
     document.body.classList.toggle("is-app-fullscreen", active);
     updateFullscreenButton();
     refreshResponsiveLayout();
@@ -3014,6 +3024,7 @@
     window.visualViewport.addEventListener("resize", syncViewportHeight, { passive: true });
     window.visualViewport.addEventListener("scroll", syncViewportHeight, { passive: true });
   }
+  document.addEventListener("touchmove", preventIosStageScrollDuringControl, { passive: false });
   document.addEventListener("fullscreenchange", handleNativeFullscreenChange);
 
   updateBgmButton();

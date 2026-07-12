@@ -31,8 +31,16 @@ body {
 }
 
 body.is-app-fullscreen {
+  height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   background: #000;
+}
+
+html.is-app-fullscreen {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button {
@@ -77,17 +85,27 @@ body.is-app-fullscreen .game-stage {
   top: 50%;
   z-index: 100;
   width: min(100vw, calc(var(--app-height) * 16 / 9));
+  height: min(var(--app-height), calc(100vw * 9 / 16));
   max-width: none;
+  max-height: none;
+  aspect-ratio: 16 / 9;
   border: 0;
   box-shadow: none;
   transform: translate(-50%, -50%);
 }
 
 .game-stage:fullscreen {
-  width: min(100vw, calc(100vh * 16 / 9));
-  max-width: none;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: min(100vw, calc(var(--app-height) * 16 / 9)) !important;
+  height: min(var(--app-height), calc(100vw * 9 / 16)) !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: 16 / 9;
   border: 0;
   box-shadow: none;
+  transform: translate(-50%, -50%);
 }
 
 .game-stage.is-info-overlay {
@@ -100,6 +118,16 @@ body.is-app-fullscreen .game-stage {
   height: 100%;
   image-rendering: auto;
   touch-action: pan-y pinch-zoom;
+}
+
+:root.is-ios-safari .game-stage,
+:root.is-ios-safari #gameCanvas {
+  touch-action: none;
+}
+
+:root.is-ios-safari.is-app-fullscreen,
+:root.is-ios-safari.is-app-fullscreen body {
+  touch-action: none;
 }
 
 .game-stage.is-info-overlay #gameCanvas {
