@@ -1295,15 +1295,16 @@
     suzy.bounceTime = 0;
   }
 
-  function addSplash(x, y, color, text, font = null) {
+  function addSplash(x, y, color, text, font = null, options = {}) {
     splashes.push({
       x,
       y,
       color,
       text,
       font,
+      staticText: Boolean(options.staticText),
       age: 0,
-      life: 0.7,
+      life: options.life || 0.7,
     });
   }
 
@@ -1313,12 +1314,12 @@
     const requests = pendingSplashRequests;
     pendingSplashRequests = [];
     requests.forEach((request) => {
-      addSplash(request.x, request.y, request.color, request.text, request.font);
+      addSplash(request.x, request.y, request.color, request.text, request.font, request.options);
     });
   }
 
-  function addSplashNextFrame(x, y, color, text, font = null) {
-    pendingSplashRequests.push({ x, y, color, text, font });
+  function addSplashNextFrame(x, y, color, text, font = null, options = {}) {
+    pendingSplashRequests.push({ x, y, color, text, font, options });
     if (pendingSplashFrame) return;
     pendingSplashFrame = window.requestAnimationFrame(flushPendingSplashRequests);
   }
@@ -1615,7 +1616,14 @@
         score += earnedPoints;
         currentLevelScore += earnedPoints;
         playCatchSound();
-        addSplashNextFrame(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
+        if (isIosSafariLike) {
+          addSplashNextFrame(glass.x, trayTop + 30, glass.type.color, `+${earnedPoints}`, glass.type.font, {
+            staticText: true,
+            life: 0.2,
+          });
+        } else {
+          addSplashNextFrame(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
+        }
         glasses.splice(i, 1);
         continue;
       }
@@ -2235,16 +2243,17 @@
   function drawSplash(splash) {
     const t = splash.age / splash.life;
     ctx.save();
-    ctx.globalAlpha = 1 - t;
+    ctx.globalAlpha = splash.staticText ? 1 : 1 - t;
+    const y = splash.staticText ? splash.y : splash.y - t * 42;
     if (splash.image) {
       drawSplashImage(splash, t);
     } else if (splash.font) {
-      drawBitmapText(splash.text, splash.x, splash.y - t * 42, splash.font, 0.34);
+      drawBitmapText(splash.text, splash.x, y, splash.font, 0.34);
     } else {
       ctx.fillStyle = splash.color;
       ctx.font = "700 28px Microsoft JhengHei, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(splash.text, splash.x, splash.y - t * 42);
+      ctx.fillText(splash.text, splash.x, y);
     }
     ctx.restore();
   }
