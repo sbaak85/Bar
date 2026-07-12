@@ -816,7 +816,11 @@
   function syncViewportHeight() {
     const viewport = window.visualViewport;
     const height = viewport && viewport.height ? viewport.height : window.innerHeight;
+    const width = viewport && viewport.width ? viewport.width : window.innerWidth;
     if (!Number.isFinite(height) || height <= 0) return;
+    if (Number.isFinite(width) && width > 0) {
+      document.documentElement.style.setProperty("--app-width", `${Math.round(width)}px`);
+    }
     document.documentElement.style.setProperty("--app-height", `${Math.max(320, Math.round(height))}px`);
     syncUiScale();
     window.requestAnimationFrame(syncUiScale);
@@ -856,10 +860,11 @@
 
   async function enterAppFullscreen() {
     applyAppFullscreen(true);
-    if (gameStage.requestFullscreen && !document.fullscreenElement) {
+    const fullscreenTarget = document.documentElement;
+    if (fullscreenTarget.requestFullscreen && !document.fullscreenElement) {
       nativeFullscreenRequested = true;
       try {
-        await gameStage.requestFullscreen({ navigationUI: "hide" });
+        await fullscreenTarget.requestFullscreen({ navigationUI: "hide" });
       } catch {
         nativeFullscreenRequested = false;
         // CSS fullscreen fallback remains active for Safari/iOS and blocked fullscreen requests.
@@ -890,7 +895,7 @@
   }
 
   function handleNativeFullscreenChange() {
-    if (document.fullscreenElement === gameStage) {
+    if (document.fullscreenElement) {
       nativeFullscreenRequested = true;
       applyAppFullscreen(true);
       return;
