@@ -2,6 +2,7 @@
   color-scheme: dark;
   --app-width: 100vw;
   --app-height: 100vh;
+  --compact-fullscreen-visual-scale: 0.8;
   --shell-gap: 18px;
   --ui-scale: 1;
   --paper: #fff7dc;
@@ -721,6 +722,49 @@ html:fullscreen body {
 
 :root.is-compact-mobile-ui .debug-toggle {
   min-width: clamp(36px, calc(82px * var(--ui-scale)), 54px);
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen .hud {
+  transform: scale(var(--compact-fullscreen-visual-scale));
+  transform-origin: top left;
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen #leftButton,
+:root.is-compact-mobile-ui.is-app-fullscreen #rightButton {
+  transform: scale(var(--compact-fullscreen-visual-scale));
+  transform-origin: bottom center;
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen #leftButton:active,
+:root.is-compact-mobile-ui.is-app-fullscreen #rightButton:active {
+  transform: translateY(2px) scale(0.78);
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen #pauseButton,
+:root.is-compact-mobile-ui.is-app-fullscreen #bgmButton {
+  transform: scale(var(--compact-fullscreen-visual-scale));
+  transform-origin: top right;
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen #pauseButton:active,
+:root.is-compact-mobile-ui.is-app-fullscreen #bgmButton:active {
+  transform: translateY(1px) scale(var(--compact-fullscreen-visual-scale));
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen .debug-panel {
+  transform: scale(var(--compact-fullscreen-visual-scale));
+  transform-origin: top right;
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen .message-panel.is-fail h1,
+:root.is-compact-mobile-ui.is-app-fullscreen .message-panel.is-fail p,
+:root.is-compact-mobile-ui.is-app-fullscreen .message-panel.is-fail #startButton {
+  transform: scale(var(--compact-fullscreen-visual-scale));
+  transform-origin: center;
+}
+
+:root.is-compact-mobile-ui.is-app-fullscreen .message-panel.is-fail #startButton:active {
+  transform: translateY(3px) scale(var(--compact-fullscreen-visual-scale));
 }
 
 .debug-options {
