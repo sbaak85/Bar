@@ -643,14 +643,14 @@ html:fullscreen body {
 
 #pauseButton {
   top: 10px;
-  right: 210px;
+  right: 132px;
   z-index: 8;
   min-width: 70px;
 }
 
 #bgmButton {
   top: 10px;
-  right: 88px;
+  right: 10px;
   z-index: 8;
   min-width: 112px;
 }
@@ -681,13 +681,13 @@ html:fullscreen body {
 
 :root.is-compact-mobile-ui #pauseButton {
   top: clamp(5px, calc(12px * var(--ui-scale)), 8px);
-  right: clamp(106px, calc(250px * var(--ui-scale)), 158px);
+  right: clamp(66px, calc(132px * var(--ui-scale)), 94px);
   min-width: clamp(40px, calc(84px * var(--ui-scale)), 54px);
 }
 
 :root.is-compact-mobile-ui #bgmButton {
   top: clamp(5px, calc(12px * var(--ui-scale)), 8px);
-  right: clamp(46px, calc(110px * var(--ui-scale)), 70px);
+  right: clamp(5px, calc(12px * var(--ui-scale)), 8px);
   min-width: clamp(54px, calc(120px * var(--ui-scale)), 78px);
 }
 
@@ -696,7 +696,7 @@ html:fullscreen body {
   top: 10px;
   right: 10px;
   z-index: 30;
-  display: grid;
+  display: none;
   justify-items: end;
   gap: 6px;
 }
@@ -964,13 +964,13 @@ html:fullscreen body {
 
   #pauseButton {
     top: 6px;
-    right: 124px;
+    right: 76px;
     min-width: 48px;
   }
 
   #bgmButton {
     top: 6px;
-    right: 54px;
+    right: 6px;
     min-width: 64px;
   }
 
@@ -993,13 +993,13 @@ html:fullscreen body {
 
   :root.is-compact-mobile-ui #pauseButton {
     top: 5px;
-    right: 106px;
+    right: 65px;
     min-width: 40px;
   }
 
   :root.is-compact-mobile-ui #bgmButton {
     top: 5px;
-    right: 46px;
+    right: 5px;
     min-width: 54px;
   }
 
