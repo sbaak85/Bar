@@ -30,6 +30,11 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+body.is-app-fullscreen {
+  overflow: hidden;
+  background: #000;
+}
+
 button {
   border: 0;
   font: inherit;
@@ -40,6 +45,10 @@ button {
   display: grid;
   place-items: center;
   padding: var(--shell-gap);
+}
+
+body.is-app-fullscreen .game-shell {
+  padding: 0;
 }
 
 .game-stage {
@@ -60,6 +69,25 @@ button {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+body.is-app-fullscreen .game-stage {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 100;
+  width: min(100vw, calc(var(--app-height) * 16 / 9));
+  max-width: none;
+  border: 0;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.game-stage:fullscreen {
+  width: min(100vw, calc(100vh * 16 / 9));
+  max-width: none;
+  border: 0;
+  box-shadow: none;
 }
 
 .game-stage.is-info-overlay {
@@ -427,6 +455,37 @@ button {
   white-space: nowrap;
 }
 
+:root.is-ios-safari .message-panel.is-fail {
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(20px * var(--ui-scale));
+  -webkit-text-size-adjust: 100%;
+}
+
+:root.is-ios-safari .message-panel.is-fail h1 {
+  font-size: clamp(20px, calc(62px * var(--ui-scale)), 50px);
+  line-height: 1.08;
+}
+
+:root.is-ios-safari .message-panel.is-fail p {
+  max-width: min(920px, 88%);
+  font-size: clamp(12px, calc(22px * var(--ui-scale)), 18px);
+  line-height: 1.35;
+}
+
+:root.is-ios-safari .message-panel.is-fail .fail-reason {
+  margin-bottom: calc(8px * var(--ui-scale));
+  font-size: clamp(14px, calc(40px * var(--ui-scale)), 32px);
+  line-height: 1.18;
+  white-space: nowrap;
+}
+
+:root.is-ios-safari .message-panel.is-fail #startButton {
+  min-width: clamp(58px, calc(116px * var(--ui-scale)), 88px);
+  min-height: clamp(30px, calc(48px * var(--ui-scale)), 38px);
+  padding: clamp(5px, calc(9px * var(--ui-scale)), 8px) clamp(10px, calc(18px * var(--ui-scale)), 14px);
+  font-size: clamp(12px, calc(22px * var(--ui-scale)), 16px);
+}
+
 .message-panel button,
 .controls button {
   min-width: 88px;
@@ -560,6 +619,26 @@ button {
   box-shadow: none;
 }
 
+:root.is-ios-safari #pauseButton,
+:root.is-ios-safari #bgmButton,
+:root.is-ios-safari .debug-toggle {
+  min-height: 30px;
+  padding: 4px 7px;
+  font-size: 13px;
+}
+
+:root.is-ios-safari #pauseButton {
+  top: 8px;
+  right: 158px;
+  min-width: 54px;
+}
+
+:root.is-ios-safari #bgmButton {
+  top: 8px;
+  right: 70px;
+  min-width: 78px;
+}
+
 .debug-panel {
   position: absolute;
   top: 10px;
@@ -582,6 +661,15 @@ button {
   min-height: 34px;
   padding: 6px 10px;
   cursor: pointer;
+}
+
+:root.is-ios-safari .debug-panel {
+  top: 8px;
+  right: 8px;
+}
+
+:root.is-ios-safari .debug-toggle {
+  min-width: 54px;
 }
 
 .debug-options {
@@ -623,6 +711,95 @@ button {
 
 .debug-number-row button {
   cursor: pointer;
+}
+
+.fullscreen-button {
+  position: absolute;
+  right: calc(8px * var(--ui-scale));
+  bottom: calc(8px * var(--ui-scale));
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  width: calc(34px * var(--ui-scale));
+  height: calc(34px * var(--ui-scale));
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: #fff7dc;
+  background: rgba(24, 12, 9, 0.74);
+  border: 1px solid rgba(255, 247, 220, 0.48);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.42);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.fullscreen-button:active {
+  transform: translateY(1px);
+}
+
+.fullscreen-icon {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.fs-corner {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: currentColor;
+  border-style: solid;
+  transition: transform 160ms ease, left 160ms ease, right 160ms ease, top 160ms ease, bottom 160ms ease;
+}
+
+.fs-tl {
+  left: 0;
+  top: 0;
+  border-width: 2px 0 0 2px;
+}
+
+.fs-tr {
+  right: 0;
+  top: 0;
+  border-width: 2px 2px 0 0;
+}
+
+.fs-bl {
+  left: 0;
+  bottom: 0;
+  border-width: 0 0 2px 2px;
+}
+
+.fs-br {
+  right: 0;
+  bottom: 0;
+  border-width: 0 2px 2px 0;
+}
+
+.fullscreen-button.is-fullscreen .fs-tl {
+  left: 5px;
+  top: 5px;
+  transform: rotate(180deg);
+}
+
+.fullscreen-button.is-fullscreen .fs-tr {
+  right: 5px;
+  top: 5px;
+  transform: rotate(180deg);
+}
+
+.fullscreen-button.is-fullscreen .fs-bl {
+  left: 5px;
+  bottom: 5px;
+  transform: rotate(180deg);
+}
+
+.fullscreen-button.is-fullscreen .fs-br {
+  right: 5px;
+  bottom: 5px;
+  transform: rotate(180deg);
 }
 
 @media (max-width: 680px) {
@@ -709,5 +886,34 @@ button {
 
   .debug-toggle {
     min-width: 42px;
+  }
+
+  :root.is-ios-safari #pauseButton,
+  :root.is-ios-safari #bgmButton,
+  :root.is-ios-safari .debug-toggle {
+    min-height: 24px;
+    padding: 3px 5px;
+    font-size: 10.5px;
+  }
+
+  :root.is-ios-safari #pauseButton {
+    top: 5px;
+    right: 106px;
+    min-width: 40px;
+  }
+
+  :root.is-ios-safari #bgmButton {
+    top: 5px;
+    right: 46px;
+    min-width: 54px;
+  }
+
+  :root.is-ios-safari .debug-panel {
+    top: 5px;
+    right: 5px;
+  }
+
+  :root.is-ios-safari .debug-toggle {
+    min-width: 36px;
   }
 }

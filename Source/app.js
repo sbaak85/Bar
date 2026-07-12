@@ -20,6 +20,7 @@
   const rightButton = document.getElementById("rightButton");
   const pauseButton = document.getElementById("pauseButton");
   const bgmButton = document.getElementById("bgmButton");
+  const fullscreenButton = document.getElementById("fullscreenButton");
   const debugToggleButton = document.getElementById("debugToggleButton");
   const debugOptions = document.getElementById("debugOptions");
   const debugTrayCollision = document.getElementById("debugTrayCollision");
@@ -306,6 +307,8 @@
   let loadingPhase = "black";
   let loadingTimer = null;
   let loadingCompleted = false;
+  let appFullscreenActive = false;
+  let nativeFullscreenRequested = false;
   let skipNextCupOpenSound = false;
   let countdownActive = false;
   let countdownTime = 0;
@@ -438,6 +441,7 @@
     lastTime = performance.now();
     updateHud();
     messagePanel.classList.add("is-hidden");
+    messagePanel.classList.remove("is-fail");
     gameStage.classList.remove("is-initial-info");
     gameStage.classList.remove("is-info-overlay");
     startButton.blur();
@@ -565,6 +569,7 @@
     initialInfoState.exitTime = 0;
     resetInfoPage();
     messagePanel.classList.add("is-hidden");
+    messagePanel.classList.remove("is-fail");
     gameStage.classList.add("is-initial-info");
     gameStage.classList.add("is-info-overlay");
     draw();
@@ -815,6 +820,77 @@
     document.documentElement.style.setProperty("--ui-scale", scale.toFixed(4));
   }
 
+  function refreshResponsiveLayout() {
+    syncViewportHeight();
+    window.setTimeout(syncViewportHeight, 80);
+    window.setTimeout(syncViewportHeight, 260);
+    window.requestAnimationFrame(() => {
+      syncUiScale();
+      draw();
+    });
+  }
+
+  function updateFullscreenButton() {
+    if (!fullscreenButton) return;
+    fullscreenButton.classList.toggle("is-fullscreen", appFullscreenActive);
+    fullscreenButton.setAttribute("aria-pressed", String(appFullscreenActive));
+    fullscreenButton.setAttribute("aria-label", appFullscreenActive ? "退出全螢幕" : "全螢幕");
+  }
+
+  function applyAppFullscreen(active) {
+    appFullscreenActive = active;
+    document.body.classList.toggle("is-app-fullscreen", active);
+    updateFullscreenButton();
+    refreshResponsiveLayout();
+  }
+
+  async function enterAppFullscreen() {
+    applyAppFullscreen(true);
+    if (gameStage.requestFullscreen && !document.fullscreenElement) {
+      nativeFullscreenRequested = true;
+      try {
+        await gameStage.requestFullscreen({ navigationUI: "hide" });
+      } catch {
+        nativeFullscreenRequested = false;
+        // CSS fullscreen fallback remains active for Safari/iOS and blocked fullscreen requests.
+      }
+    }
+    refreshResponsiveLayout();
+  }
+
+  async function exitAppFullscreen() {
+    applyAppFullscreen(false);
+    nativeFullscreenRequested = false;
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // CSS state has already been restored; ignore native fullscreen exit failures.
+      }
+    }
+    refreshResponsiveLayout();
+  }
+
+  function toggleAppFullscreen() {
+    if (appFullscreenActive) {
+      exitAppFullscreen();
+    } else {
+      enterAppFullscreen();
+    }
+  }
+
+  function handleNativeFullscreenChange() {
+    if (document.fullscreenElement === gameStage) {
+      nativeFullscreenRequested = true;
+      applyAppFullscreen(true);
+      return;
+    }
+    if (nativeFullscreenRequested) {
+      nativeFullscreenRequested = false;
+      applyAppFullscreen(false);
+    }
+  }
+
   function captureStagePointer(pointerId) {
     if (!gameStage.setPointerCapture) return;
     try {
@@ -1036,6 +1112,7 @@
     gameStage.classList.remove("is-initial-info");
     gameStage.classList.remove("is-info-overlay");
     messagePanel.classList.remove("is-info");
+    messagePanel.classList.toggle("is-fail", mode === "fail");
     messagePanel.querySelector("h1").textContent = title;
     const messageText = messagePanel.querySelector("p");
     if (mode === "fail") {
@@ -2778,6 +2855,19 @@
     if (running && !paused && !gameOver) playBgm();
   });
 
+  if (fullscreenButton) {
+    ["pointerdown", "pointermove", "pointerup", "pointercancel"].forEach((eventName) => {
+      fullscreenButton.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+    fullscreenButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleAppFullscreen();
+    });
+  }
+
   debugToggleButton.addEventListener("click", (event) => {
     event.stopPropagation();
     debugOptions.hidden = !debugOptions.hidden;
@@ -2924,8 +3014,10 @@
     window.visualViewport.addEventListener("resize", syncViewportHeight, { passive: true });
     window.visualViewport.addEventListener("scroll", syncViewportHeight, { passive: true });
   }
+  document.addEventListener("fullscreenchange", handleNativeFullscreenChange);
 
   updateBgmButton();
+  updateFullscreenButton();
   debugReverseDistance.value = String(dragControl.reverseSwitchDistance);
   updateInfoPageDom();
   draw();
