@@ -48,14 +48,11 @@
   const cardKeySound = new Audio("Assets/SE/cardkey.mp3");
   cardKeySound.volume = 0.9;
 
-  const catchSounds = [
-    new Audio("Assets/SE/putting_a_cup1.mp3"),
-    new Audio("Assets/SE/putting_a_cup2.mp3"),
-    new Audio("Assets/SE/putting_a_glass1.mp3"),
+  const catchSoundPools = [
+    createAudioPool("Assets/SE/putting_a_cup1.mp3", 0.85, 4),
+    createAudioPool("Assets/SE/putting_a_cup2.mp3", 0.85, 4),
+    createAudioPool("Assets/SE/putting_a_glass1.mp3", 0.85, 4),
   ];
-  catchSounds.forEach((sound) => {
-    sound.volume = 0.85;
-  });
 
   const missSounds = [
     new Audio("Assets/SE/glass_rolling.mp3"),
@@ -320,6 +317,8 @@
   let infoDomAnimationTimer = null;
   let glasses = [];
   let splashes = [];
+  let pendingSplashRequests = [];
+  let pendingSplashFrame = 0;
   let dustParticles = [];
   let catchSparkEffects = [];
   let lastRenderedLives = null;
@@ -417,6 +416,7 @@
     stopVoiceLoop();
     glasses = [];
     splashes = [];
+    clearPendingSplashRequests();
     tray.x = WIDTH / 2;
     tray.direction = -1;
     tray.moving = false;
@@ -448,6 +448,7 @@
     startButton.blur();
     pauseButton.textContent = "暫停";
     draw();
+    primeCatchSoundPools();
     if (skipNextCupOpenSound) {
       skipNextCupOpenSound = false;
     } else {
@@ -732,6 +733,62 @@
     }
   }
 
+  function createAudioPool(src, volume = 1, size = 4) {
+    const sounds = Array.from({ length: size }, () => {
+      const sound = new Audio(src);
+      sound.preload = "auto";
+      sound.volume = volume;
+      try {
+        sound.load();
+      } catch {
+        // Preload is a best-effort mobile performance hint.
+      }
+      return sound;
+    });
+    return { sounds, volume, index: 0, primed: false };
+  }
+
+  function playPooledSound(pool) {
+    if (!pool || pool.sounds.length === 0) return;
+    const sound = pool.sounds[pool.index % pool.sounds.length];
+    pool.index += 1;
+    playSound(sound);
+  }
+
+  function primeAudioPool(pool) {
+    if (!pool || pool.primed) return;
+    pool.primed = true;
+    pool.sounds.forEach((sound) => {
+      try {
+        const originalVolume = sound.volume;
+        sound.volume = 0;
+        const promise = sound.play();
+        const restore = () => {
+          try {
+            sound.pause();
+            sound.currentTime = 0;
+          } catch {
+            // Ignore mobile browser audio state timing differences.
+          }
+          sound.volume = originalVolume;
+        };
+        if (promise && typeof promise.then === "function") {
+          promise.then(restore).catch(() => {
+            sound.volume = originalVolume;
+          });
+        } else {
+          restore();
+        }
+      } catch {
+        sound.volume = pool.volume;
+      }
+    });
+  }
+
+  function primeCatchSoundPools() {
+    catchSoundPools.forEach(primeAudioPool);
+  }
+
   function playCatDeflectSounds() {
     catDeflectSounds.forEach(playSound);
   }
@@ -777,8 +834,8 @@
   }
 
   function playCatchSound() {
-    const sound = catchSounds[Math.floor(Math.random() * catchSounds.length)];
-    playSound(sound);
+    const pool = catchSoundPools[Math.floor(Math.random() * catchSoundPools.length)];
+    playPooledSound(pool);
   }
 
   function playMissSound() {
@@ -1250,6 +1307,29 @@
     });
   }
 
+  function flushPendingSplashRequests() {
+    pendingSplashFrame = 0;
+    if (pendingSplashRequests.length === 0) return;
+    const requests = pendingSplashRequests;
+    pendingSplashRequests = [];
+    requests.forEach((request) => {
+      addSplash(request.x, request.y, request.color, request.text, request.font);
+    });
+  }
+
+  function addSplashNextFrame(x, y, color, text, font = null) {
+    pendingSplashRequests.push({ x, y, color, text, font });
+    if (pendingSplashFrame) return;
+    pendingSplashFrame = window.requestAnimationFrame(flushPendingSplashRequests);
+  }
+
+  function clearPendingSplashRequests() {
+    pendingSplashRequests = [];
+    if (!pendingSplashFrame) return;
+    window.cancelAnimationFrame(pendingSplashFrame);
+    pendingSplashFrame = 0;
+  }
+
   function addImageSplash(x, y, image, width) {
     splashes.push({
       x,
@@ -1265,6 +1345,7 @@
     clearInputState();
     glasses = [];
     splashes = [];
+    clearPendingSplashRequests();
     dustParticles = [];
     catchSparkEffects = [];
     catScratchEffects = [];
@@ -1520,7 +1601,6 @@
           lives = Math.min(MAX_LIVES, lives + 1);
           if (healed) {
             playSound(eventSounds.heal);
-            addCatchSparks(glass.x, trayTop + 2);
             addImageSplash(glass.x, trayTop - 10, lifePopupImage, 78);
           }
           glasses.splice(i, 1);
@@ -1535,8 +1615,7 @@
         score += earnedPoints;
         currentLevelScore += earnedPoints;
         playCatchSound();
-        addCatchSparks(glass.x, trayTop + 2);
-        addSplash(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
+        addSplashNextFrame(glass.x, trayTop - 10, glass.type.color, `+${earnedPoints}`, glass.type.font);
         glasses.splice(i, 1);
         continue;
       }
