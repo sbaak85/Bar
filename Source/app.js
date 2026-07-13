@@ -727,6 +727,23 @@
       point.y <= rect.y + rect.height;
   }
 
+  function getCanInventoryHitRect() {
+    const { x, y, slotWidth, slotHeight, gap } = CAN_INVENTORY_UI;
+    return {
+      x: x - 12,
+      y: y - 12,
+      width: slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 24,
+      height: slotHeight + 24,
+    };
+  }
+
+  function handleCanInventoryPointerDown(event) {
+    if (!isPointInsideRect(getCanvasPoint(event), getCanInventoryHitRect())) return false;
+    event.preventDefault();
+    tryUseCan();
+    return true;
+  }
+
   function isInJukeboxButton(event) {
     return isPointInsideRect(getCanvasPoint(event), JUKEBOX_BUTTON);
   }
@@ -3386,6 +3403,7 @@
     if (handleInitialInfoPointerDown(event)) return;
     if (handleLevelClearPointerDown(event)) return;
     if (handlePauseInfoPointerDown(event)) return;
+    if (handleCanInventoryPointerDown(event)) return;
     if (startJukeboxPress(event)) return;
     if (!isInDragControlArea(event)) return;
     event.preventDefault();
