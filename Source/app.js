@@ -29,6 +29,8 @@
   const debugJukeboxCollision = document.getElementById("debugJukeboxCollision");
   const debugInfiniteMode = document.getElementById("debugInfiniteMode");
   const debugInputArea = document.getElementById("debugInputArea");
+  const debugFillCans = document.getElementById("debugFillCans");
+  const debugSkipLevel = document.getElementById("debugSkipLevel");
   const debugReverseDistance = document.getElementById("debugReverseDistance");
   const debugReverseDistanceApply = document.getElementById("debugReverseDistanceApply");
   const backgroundImage = new Image();
@@ -70,6 +72,9 @@
     cupOpen: new Audio("Assets/SE/杯打開.mp3"),
     cupClose: new Audio("Assets/SE/杯關閉.mp3"),
     heal: new Audio("Assets/SE/回血.mp3"),
+    canOpen: new Audio("Assets/SE/開罐.mp3"),
+    canUnavailable: new Audio("Assets/SE/不可用.mp3"),
+    canEmpty: new Audio("Assets/SE/沒有.mp3"),
   };
   eventSounds.coin.volume = 0.9;
   eventSounds.applause.volume = 0.9;
@@ -77,6 +82,15 @@
   eventSounds.cupOpen.volume = 0.9;
   eventSounds.cupClose.volume = 0.9;
   eventSounds.heal.volume = 0.9;
+  eventSounds.canOpen.volume = 1;
+  eventSounds.canUnavailable.volume = 0.9;
+  eventSounds.canEmpty.volume = 0.9;
+  const canOpenBoostSound = new Audio("Assets/SE/開罐.mp3");
+  canOpenBoostSound.volume = 0.5;
+
+  const catEatSound = new Audio("Assets/SE/貓吃.mp3");
+  catEatSound.loop = true;
+  catEatSound.volume = 0.86;
 
   const catDeflectSounds = [
     new Audio("Assets/SE/平打.mp3"),
@@ -104,7 +118,9 @@
   const suzySleepImage = loadImage("Assets/Yume/Suzy_sleep.png");
   const angerImage = loadImage("Assets/anger.png");
   const lifePopupImage = loadImage("Assets/+life.png");
+  const canPopupImage = loadImage("Assets/+1CAN.png");
   const missPopupImage = loadImage("Assets/Font/Miss.png");
+  const canItemImage = loadImage("Assets/wine bottle/Can1.png");
   const blackboardImage = loadImage("Assets/blackboard.png");
   const timeIconImage = loadImage("Assets/Time.png");
   const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png", "Assets/Info_Page3.png"];
@@ -113,6 +129,8 @@
     body: loadImage("Assets/Yume/Cat2.png"),
     tail: loadImage("Assets/Yume/Tail.png"),
     attack: loadImage("Assets/Yume/Cat_Attack.png"),
+    eatBody: loadImage("Assets/Yume/cat2_eat_body.png"),
+    eatTail: loadImage("Assets/Yume/cat2_eat_tail.png"),
   };
   const bitmapFontImages = {
     system: loadImage("Assets/Font/CHFont1.png"),
@@ -171,6 +189,8 @@
     body: { x: 52, y: 45, width: 530, height: 918 },
     tail: { x: 22, y: 14, width: 222, height: 166 },
     attack: { x: 34, y: 58, width: 891, height: 944 },
+    eatBody: { x: 43, y: 56, width: 731, height: 535 },
+    eatTail: { x: 32, y: 30, width: 209, height: 144 },
   };
 
   const cat2 = {
@@ -186,6 +206,15 @@
     tailDuration: 0,
     tailAmplitude: 0,
     tailSwings: 2,
+    feedTimer: 0,
+    feedDuration: 6,
+    feedTailTime: 0,
+    feedJitterTime: 0,
+    eatBodyHeight: 74,
+    eatPivotXRatio: 0.48,
+    eatTailOffsetXRatio: 0.83,
+    eatTailPivotYRatio: 0.57,
+    eatTailWidthRatio: 0.35,
     attackTimer: 0,
     attackDuration: 0.2,
     reactTimer: 0,
@@ -223,6 +252,9 @@
   const LEVEL_CLEAR_CONFETTI_SECONDS = 3;
   const JUKEBOX_BUTTON = { x: 38, y: 318, width: 54, height: 32 };
   const JUKEBOX_CLICK_DRAG_THRESHOLD = 14;
+  const MAX_CANS = 3;
+  const CAN_DROP_START_TIME = 20;
+  const CAN_INVENTORY_UI = { x: WIDTH / 2 - 86, y: HEIGHT - 58, slotWidth: 52, slotHeight: 38, gap: 8 };
   const LOADING_BLACK_MS = 500;
   const LOADING_COVER_FADE_MS = 1000;
   const LOADING_TAP_FADE_MS = 500;
@@ -282,6 +314,10 @@
   let currentLevelScore = 0;
   let currentLevelCatchCount = 0;
   let missCount = 0;
+  let canCount = 0;
+  let hasEverCollectedCan = false;
+  let hasUsedCan = false;
+  let canStatusMessage = null;
   let lives = MAX_LIVES;
   let timeLeft = ROUND_SECONDS;
   let spawnTimer = 0;
@@ -373,6 +409,15 @@
     isLife: true,
     noRotation: true,
   };
+  const canDropType = {
+    name: "can",
+    image: canItemImage,
+    aspect: 1020 / 837,
+    color: "#f0c66a",
+    points: 0,
+    isCan: true,
+    noRotation: true,
+  };
   const LIFE_DROP_CHANCE_BY_LIVES = {
     1: 1 / 8,
     2: 1 / 16,
@@ -408,6 +453,10 @@
     currentLevelScore = 0;
     currentLevelCatchCount = 0;
     missCount = 0;
+    canCount = 0;
+    hasEverCollectedCan = false;
+    hasUsedCan = false;
+    canStatusMessage = null;
     lives = MAX_LIVES;
     timeLeft = ROUND_SECONDS;
     spawnTimer = 0;
@@ -428,6 +477,10 @@
     catScratchEffects = [];
     cat2.attackTimer = 0;
     cat2.reactTimer = 0;
+    cat2.feedTimer = 0;
+    cat2.feedTailTime = 0;
+    cat2.feedJitterTime = 0;
+    stopCatEatSound();
     cat2.collisionHitTimes = [];
     cat2.angerTimer = 0;
     cat2.hitClock = 0;
@@ -730,6 +783,61 @@
       });
     } catch {
       // Sound effects should never interrupt gameplay.
+    }
+  }
+
+  function playCanOpenSound() {
+    playSound(eventSounds.canOpen);
+    playSound(canOpenBoostSound);
+  }
+
+  function showCanStatusMessage(text, sound) {
+    if (canStatusMessage) return false;
+    canStatusMessage = {
+      text,
+      age: 0,
+      life: 1,
+    };
+    playSound(sound);
+    return true;
+  }
+
+  function startCatEatSound() {
+    try {
+      catEatSound.currentTime = 0;
+      catEatSound.play().catch(() => {
+        // Browsers may block audio until a direct user gesture is accepted.
+      });
+    } catch {
+      // Feeding audio should never interrupt gameplay.
+    }
+  }
+
+  function stopCatEatSound() {
+    try {
+      catEatSound.pause();
+      catEatSound.currentTime = 0;
+    } catch {
+      // Feeding audio should never interrupt gameplay.
+    }
+  }
+
+  function pauseCatEatSound() {
+    try {
+      catEatSound.pause();
+    } catch {
+      // Feeding audio should never interrupt gameplay.
+    }
+  }
+
+  function resumeCatEatSound() {
+    if (!isCat2Feeding()) return;
+    try {
+      catEatSound.play().catch(() => {
+        // Browsers may block audio until a direct user gesture is accepted.
+      });
+    } catch {
+      // Feeding audio should never interrupt gameplay.
     }
   }
 
@@ -1226,7 +1334,7 @@
 
   function spawnGlass() {
     const type = chooseDropType();
-    const size = type.isLife ? 48 + Math.random() * 8 : 58 + Math.random() * 18;
+    const size = type.isLife ? 48 + Math.random() * 8 : type.isCan ? 50 + Math.random() * 8 : 58 + Math.random() * 18;
     const startX = SPAWN_LINE.left + Math.random() * (SPAWN_LINE.right - SPAWN_LINE.left);
     const targetX = Math.max(54, Math.min(WIDTH - 54, startX + (-280 + Math.random() * 560)));
     const fallDistance = HEIGHT + 70 - SPAWN_LINE.y;
@@ -1256,7 +1364,9 @@
     if (lifeDropChance > 0 && Math.random() < lifeDropChance) {
       return lifeDropType;
     }
-    return glassTypes[Math.floor(Math.random() * glassTypes.length)];
+    const canAvailable = currentLevel === 1 && timeLeft <= CAN_DROP_START_TIME && canCount < MAX_CANS;
+    const pool = canAvailable ? [...glassTypes, canDropType] : glassTypes;
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   function resetGlassTrajectoryFromCat(glass) {
@@ -1314,12 +1424,22 @@
     const requests = pendingSplashRequests;
     pendingSplashRequests = [];
     requests.forEach((request) => {
+      if (request.image) {
+        addImageSplash(request.x, request.y, request.image, request.width);
+        return;
+      }
       addSplash(request.x, request.y, request.color, request.text, request.font, request.options);
     });
   }
 
   function addSplashNextFrame(x, y, color, text, font = null, options = {}) {
     pendingSplashRequests.push({ x, y, color, text, font, options });
+    if (pendingSplashFrame) return;
+    pendingSplashFrame = window.requestAnimationFrame(flushPendingSplashRequests);
+  }
+
+  function addImageSplashNextFrame(x, y, image, width) {
+    pendingSplashRequests.push({ x, y, image, width });
     if (pendingSplashFrame) return;
     pendingSplashFrame = window.requestAnimationFrame(flushPendingSplashRequests);
   }
@@ -1361,6 +1481,10 @@
     suzy.bounceTime = suzy.bounceDuration;
     cat2.attackTimer = 0;
     cat2.reactTimer = 0;
+    cat2.feedTimer = 0;
+    cat2.feedTailTime = 0;
+    cat2.feedJitterTime = 0;
+    stopCatEatSound();
     cat2.collisionHitTimes = [];
     cat2.angerTimer = 0;
     cat2.hitClock = 0;
@@ -1582,7 +1706,7 @@
       glass.y = glass.startY - glass.arcHeight * Math.sin(Math.PI * Math.min(t, 1)) + glass.fallDistance * t * t;
       glass.rotation += glass.spin * delta;
 
-      if (cat2Enabled && !glass.type.isLife && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
+      if (cat2Enabled && !isCat2Feeding() && !glass.type.isLife && !glass.type.isCan && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
         triggerCat2Attack();
         resetGlassTrajectoryFromCat(glass);
         playCatDeflectSounds();
@@ -1609,6 +1733,20 @@
           continue;
         }
 
+        if (glass.type.isCan) {
+          const added = canCount < MAX_CANS;
+          if (added) {
+            canCount += 1;
+            hasEverCollectedCan = true;
+            if (canStatusMessage && canStatusMessage.text === "已經沒有罐罐了...") canStatusMessage = null;
+            addImageSplashNextFrame(glass.x, trayTop - 10, canPopupImage, 96);
+          }
+          playSound(eventSounds.cupClose);
+          playCatchSound();
+          glasses.splice(i, 1);
+          continue;
+        }
+
         combo += 1;
         catchCount += 1;
         currentLevelCatchCount += 1;
@@ -1630,7 +1768,7 @@
 
       if (glass.y > HEIGHT + 36) {
         glasses.splice(i, 1);
-        if (glass.type.isLife) {
+        if (glass.type.isLife || glass.type.isCan) {
           continue;
         }
 
@@ -1654,6 +1792,11 @@
       if (splashes[i].age >= splashes[i].life) splashes.splice(i, 1);
     }
 
+    if (canStatusMessage) {
+      canStatusMessage.age += delta;
+      if (canStatusMessage.age >= canStatusMessage.life) canStatusMessage = null;
+    }
+
     if (suzy.bounceTime < suzy.bounceDuration) {
       suzy.bounceTime += delta;
     }
@@ -1672,6 +1815,7 @@
     clearInputState();
     bgm.pause();
     stopVoiceLoop();
+    stopCatEatSound();
     updateHud();
     showMessage(title, text, buttonText, mode);
   }
@@ -1769,6 +1913,62 @@
     ctx.restore();
   }
 
+  function drawCanInventory() {
+    const { x, y, slotWidth, slotHeight, gap } = CAN_INVENTORY_UI;
+    ctx.save();
+    ctx.fillStyle = "rgba(18, 8, 7, 0)";
+    ctx.strokeStyle = "rgba(255, 247, 220, 0)";
+    ctx.lineWidth = 2;
+    ctx.fillRect(x - 8, y - 7, slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 16, slotHeight + 14);
+    ctx.strokeRect(x - 8, y - 7, slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 16, slotHeight + 14);
+
+    for (let i = 0; i < MAX_CANS; i += 1) {
+      const slotX = x + i * (slotWidth + gap);
+      ctx.strokeStyle = "rgba(255, 247, 220, 0)";
+      ctx.strokeRect(slotX, y, slotWidth, slotHeight);
+      if (i >= canCount) continue;
+      if (canItemImage.complete && canItemImage.naturalWidth > 0) {
+        const imageHeight = (slotHeight - 6) * 1.25;
+        const imageWidth = imageHeight * (canItemImage.naturalWidth / canItemImage.naturalHeight);
+        ctx.drawImage(
+          canItemImage,
+          slotX + slotWidth / 2 - imageWidth / 2,
+          y + slotHeight / 2 - imageHeight / 2,
+          imageWidth,
+          imageHeight
+        );
+      } else {
+        ctx.fillStyle = "#f0c66a";
+        ctx.fillRect(slotX + 8, y + 7, slotWidth - 16, slotHeight - 14);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCanStatusMessage() {
+    if (!canStatusMessage) return;
+
+    const { x, y, slotWidth, gap } = CAN_INVENTORY_UI;
+    const t = Math.min(1, canStatusMessage.age / canStatusMessage.life);
+    const centerX = x + (slotWidth * MAX_CANS + gap * (MAX_CANS - 1)) / 2;
+    const baselineY = y - 12 - t * 34;
+    const alpha = t < 0.18 ? t / 0.18 : Math.max(0, 1 - (t - 0.42) / 0.58);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "700 18px Microsoft JhengHei, sans-serif";
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "rgba(30, 12, 6, 0.86)";
+    ctx.fillStyle = "#fff7dc";
+    ctx.shadowColor = "rgba(255, 211, 112, 0.55)";
+    ctx.shadowBlur = 8;
+    ctx.strokeText(canStatusMessage.text, centerX, baselineY);
+    ctx.fillText(canStatusMessage.text, centerX, baselineY);
+    ctx.restore();
+  }
+
   function drawBottleCollisionDebug(glass) {
     ctx.save();
     ctx.strokeStyle = "#ffffff";
@@ -1837,12 +2037,77 @@
     cat2.tailSwings = 2 + Math.floor(Math.random() * 2);
   }
 
+  function isCat2Feeding() {
+    return cat2.feedTimer > 0;
+  }
+
+  function startCat2Feeding() {
+    cat2.feedTimer = cat2.feedDuration;
+    cat2.feedTailTime = 0;
+    cat2.feedJitterTime = 0;
+    cat2.attackTimer = 0;
+    cat2.reactTimer = 0;
+    cat2.angerTimer = 0;
+    cat2.collisionHitTimes = [];
+    catScratchEffects = [];
+    startCatEatSound();
+  }
+
+  function tryUseCan() {
+    if (!running || paused || gameOver || countdownActive) return false;
+    if (!cat2Enabled) {
+      if (hasEverCollectedCan && canCount > 0) {
+        showCanStatusMessage("此道具尚未開放使用...", eventSounds.canUnavailable);
+      }
+      return false;
+    }
+    if (canCount <= 0) {
+      if (hasUsedCan) {
+        showCanStatusMessage("已經沒有罐罐了...", eventSounds.canEmpty);
+      }
+      return false;
+    }
+    if (isCat2Feeding()) return false;
+    canCount -= 1;
+    hasUsedCan = true;
+    playCanOpenSound();
+    startCat2Feeding();
+    draw();
+    return true;
+  }
+
+  function debugSkipCurrentLevel() {
+    if (!running || paused || gameOver || levelClearState.active || initialInfoState.active) return;
+    countdownActive = false;
+    countdownTime = 0;
+    if (!suzy.awake) {
+      suzy.awake = true;
+      suzy.sleepTime = 0;
+      suzy.bounceTime = 0;
+    }
+    timeLeft = 1;
+    finalCountdownSoundPlayed = false;
+    spawnTimer = Math.min(spawnTimer, 0.1);
+    lastTime = performance.now();
+    updateHud();
+    draw();
+  }
+
   function getCat2Layout() {
     const bodyCrop = cat2Crops.body;
     const bodyWidth = cat2.bodyWidth;
     const bodyHeight = bodyWidth * (bodyCrop.height / bodyCrop.width);
     const bodyLeft = cat2.x - bodyWidth / 2;
     const bodyTop = cat2.baseY - bodyHeight;
+    return { bodyCrop, bodyWidth, bodyHeight, bodyLeft, bodyTop };
+  }
+
+  function getCat2EatLayout() {
+    const bodyCrop = cat2Crops.eatBody;
+    const bodyHeight = cat2.eatBodyHeight;
+    const bodyWidth = bodyHeight * (bodyCrop.width / bodyCrop.height);
+    const bodyLeft = cat2.x - 2 - bodyWidth * cat2.eatPivotXRatio;
+    const bodyTop = cat2.baseY + 1 - bodyHeight;
     return { bodyCrop, bodyWidth, bodyHeight, bodyLeft, bodyTop };
   }
 
@@ -1894,6 +2159,13 @@
 
   function updateCat2(delta) {
     cat2.hitClock += delta;
+    if (cat2.feedTimer > 0) {
+      const previousFeedTimer = cat2.feedTimer;
+      cat2.feedTimer = Math.max(0, cat2.feedTimer - delta);
+      cat2.feedTailTime += delta;
+      cat2.feedJitterTime += delta;
+      if (previousFeedTimer > 0 && cat2.feedTimer <= 0) stopCatEatSound();
+    }
     if (cat2.attackTimer > 0) cat2.attackTimer = Math.max(0, cat2.attackTimer - delta);
     if (cat2.reactTimer > 0) cat2.reactTimer = Math.max(0, cat2.reactTimer - delta);
     if (cat2.angerTimer > 0) cat2.angerTimer = Math.max(0, cat2.angerTimer - delta);
@@ -1902,6 +2174,8 @@
       catScratchEffects[i].age += delta;
       if (catScratchEffects[i].age >= catScratchEffects[i].life) catScratchEffects.splice(i, 1);
     }
+
+    if (isCat2Feeding()) return;
 
     if (cat2.tailDuration > 0) {
       cat2.tailTime += delta;
@@ -1922,6 +2196,11 @@
   }
 
   function drawCat2() {
+    if (isCat2Feeding()) {
+      drawCat2Eating();
+      return;
+    }
+
     const bodyImage = cat2Parts.body;
     const tailImage = cat2Parts.tail;
     if (!bodyImage.complete || bodyImage.naturalWidth === 0) return;
@@ -2000,6 +2279,62 @@
     );
     drawCatScratchEffects();
     drawCat2Anger();
+  }
+
+  function drawCat2Eating() {
+    const bodyImage = cat2Parts.eatBody;
+    const tailImage = cat2Parts.eatTail;
+    if (!bodyImage.complete || bodyImage.naturalWidth === 0) return;
+
+    const layout = getCat2EatLayout();
+    const bodyCrop = layout.bodyCrop;
+    const tailCrop = cat2Crops.eatTail;
+    const yShake = Math.sin(cat2.feedJitterTime * 28) * 2;
+    const bodyLeft = layout.bodyLeft;
+    const bodyTop = layout.bodyTop + yShake;
+    const bodyWidth = layout.bodyWidth;
+    const bodyHeight = layout.bodyHeight;
+
+    if (tailImage.complete && tailImage.naturalWidth > 0) {
+      const tailWidth = bodyWidth * cat2.eatTailWidthRatio;
+      const tailHeight = tailWidth * (tailCrop.height / tailCrop.width);
+      const tailPivotX = bodyLeft + bodyWidth * cat2.eatTailOffsetXRatio;
+      const tailPivotY = bodyTop + bodyHeight * cat2.eatTailPivotYRatio;
+      const tailAngle = Math.sin(cat2.feedTailTime * 26) * 0.24 + Math.sin(cat2.feedTailTime * 61) * 0.04;
+
+      ctx.save();
+      ctx.translate(tailPivotX, tailPivotY);
+      ctx.rotate(tailAngle);
+      ctx.drawImage(
+        tailImage,
+        tailCrop.x,
+        tailCrop.y,
+        tailCrop.width,
+        tailCrop.height,
+        0,
+        -tailHeight / 2,
+        tailWidth,
+        tailHeight
+      );
+      ctx.restore();
+    }
+
+    ctx.drawImage(
+      bodyImage,
+      bodyCrop.x,
+      bodyCrop.y,
+      bodyCrop.width,
+      bodyCrop.height,
+      bodyLeft,
+      bodyTop,
+      bodyWidth,
+      bodyHeight
+    );
+
+    const countdownValue = Math.ceil(cat2.feedTimer);
+    if (countdownValue > 0 && countdownValue <= 4) {
+      drawBitmapText(`${countdownValue}..`, bodyLeft + bodyWidth * 0.29, bodyTop + 5, "blue", 0.22);
+    }
   }
 
   function drawCatScratchEffects() {
@@ -2559,9 +2894,11 @@
     if (debugState.bottleCollision) glasses.forEach(drawBottleCollisionDebug);
     drawRunDust();
     drawTray();
+    drawCanInventory();
+    drawCanStatusMessage();
     drawCatchSparks();
     if (debugState.trayCollision) drawCollisionDebug();
-    if (cat2Enabled && debugState.catCollision) drawCatCollisionDebug();
+    if (cat2Enabled && !isCat2Feeding() && debugState.catCollision) drawCatCollisionDebug();
     if (debugState.jukeboxCollision) drawJukeboxCollisionDebug();
     if (debugState.inputArea) drawInputAreaDebug();
     splashes.forEach(drawSplash);
@@ -2948,12 +3285,14 @@
       gameStage.classList.add("is-info-overlay");
       bgm.pause();
       voiceLoop.pause();
+      pauseCatEatSound();
     } else {
       gameStage.classList.remove("is-info-overlay");
       playBgm();
       voiceLoop.play().catch(() => {
         // Browsers may block audio until a direct user gesture is accepted.
       });
+      resumeCatEatSound();
     }
     lastTime = performance.now();
     draw();
@@ -3015,6 +3354,17 @@
   debugInputArea.addEventListener("change", () => {
     debugState.inputArea = debugInputArea.checked;
     draw();
+  });
+
+  debugFillCans.addEventListener("click", () => {
+    canCount = MAX_CANS;
+    hasEverCollectedCan = true;
+    if (canStatusMessage && canStatusMessage.text === "已經沒有罐罐了...") canStatusMessage = null;
+    draw();
+  });
+
+  debugSkipLevel.addEventListener("click", () => {
+    debugSkipCurrentLevel();
   });
 
   debugReverseDistanceApply.addEventListener("click", () => {
@@ -3107,6 +3457,11 @@
     if (key === " ") {
       if (!running || gameOver) resetGame();
       else pauseButton.click();
+      return;
+    }
+    if (key === "f") {
+      event.preventDefault();
+      tryUseCan();
       return;
     }
     keys.add(key === "arrowleft" || key === "arrowright" ? event.key : key);

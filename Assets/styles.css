@@ -579,6 +579,26 @@ html:fullscreen body {
   pointer-events: none;
 }
 
+.game-stage {
+  --pause-button-right: 132px;
+  --bgm-button-right: 10px;
+}
+
+.game-stage.has-debug-button {
+  --pause-button-right: 216px;
+  --bgm-button-right: 92px;
+}
+
+:root.is-compact-mobile-ui .game-stage {
+  --pause-button-right: clamp(66px, calc(132px * var(--ui-scale)), 94px);
+  --bgm-button-right: clamp(5px, calc(12px * var(--ui-scale)), 8px);
+}
+
+:root.is-compact-mobile-ui .game-stage.has-debug-button {
+  --pause-button-right: clamp(116px, calc(216px * var(--ui-scale)), 154px);
+  --bgm-button-right: clamp(56px, calc(92px * var(--ui-scale)), 74px);
+}
+
 .controls button {
   position: absolute;
   min-width: 76px;
@@ -643,14 +663,14 @@ html:fullscreen body {
 
 #pauseButton {
   top: 10px;
-  right: 132px;
+  right: var(--pause-button-right);
   z-index: 8;
   min-width: 70px;
 }
 
 #bgmButton {
   top: 10px;
-  right: 10px;
+  right: var(--bgm-button-right);
   z-index: 8;
   min-width: 112px;
 }
@@ -681,13 +701,13 @@ html:fullscreen body {
 
 :root.is-compact-mobile-ui #pauseButton {
   top: clamp(5px, calc(12px * var(--ui-scale)), 8px);
-  right: clamp(66px, calc(132px * var(--ui-scale)), 94px);
+  right: var(--pause-button-right);
   min-width: clamp(40px, calc(84px * var(--ui-scale)), 54px);
 }
 
 :root.is-compact-mobile-ui #bgmButton {
   top: clamp(5px, calc(12px * var(--ui-scale)), 8px);
-  right: clamp(5px, calc(12px * var(--ui-scale)), 8px);
+  right: var(--bgm-button-right);
   min-width: clamp(54px, calc(120px * var(--ui-scale)), 78px);
 }
 
@@ -699,6 +719,10 @@ html:fullscreen body {
   display: none;
   justify-items: end;
   gap: 6px;
+}
+
+.game-stage.has-debug-button .debug-panel {
+  display: grid;
 }
 
 .debug-toggle,
@@ -794,7 +818,8 @@ html:fullscreen body {
 }
 
 .debug-number-row input,
-.debug-number-row button {
+.debug-number-row button,
+.debug-action-button {
   min-width: 0;
   min-height: 28px;
   padding: 4px 6px;
@@ -804,8 +829,13 @@ html:fullscreen body {
   box-shadow: none;
 }
 
-.debug-number-row button {
+.debug-number-row button,
+.debug-action-button {
   cursor: pointer;
+}
+
+.debug-action-button {
+  width: 100%;
 }
 
 .fullscreen-button {
@@ -902,6 +932,26 @@ html:fullscreen body {
     --shell-gap: 8px;
   }
 
+  .game-stage {
+    --pause-button-right: 76px;
+    --bgm-button-right: 6px;
+  }
+
+  .game-stage.has-debug-button {
+    --pause-button-right: 124px;
+    --bgm-button-right: 54px;
+  }
+
+  :root.is-compact-mobile-ui .game-stage {
+    --pause-button-right: 65px;
+    --bgm-button-right: 5px;
+  }
+
+  :root.is-compact-mobile-ui .game-stage.has-debug-button {
+    --pause-button-right: 108px;
+    --bgm-button-right: 47px;
+  }
+
   .message-panel {
     gap: 8px;
     padding: 10px;
@@ -964,13 +1014,13 @@ html:fullscreen body {
 
   #pauseButton {
     top: 6px;
-    right: 76px;
+    right: var(--pause-button-right);
     min-width: 48px;
   }
 
   #bgmButton {
     top: 6px;
-    right: 6px;
+    right: var(--bgm-button-right);
     min-width: 64px;
   }
 
@@ -993,13 +1043,13 @@ html:fullscreen body {
 
   :root.is-compact-mobile-ui #pauseButton {
     top: 5px;
-    right: 65px;
+    right: var(--pause-button-right);
     min-width: 40px;
   }
 
   :root.is-compact-mobile-ui #bgmButton {
     top: 5px;
-    right: 5px;
+    right: var(--bgm-button-right);
     min-width: 54px;
   }
 

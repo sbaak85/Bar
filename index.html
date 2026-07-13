@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>酒吧接酒杯</title>
-  <link rel="stylesheet" href="Assets/styles.css?v=20260712-ios-score-y15">
+  <link rel="stylesheet" href="Assets/styles.css?v=20260713-can-popup-image1">
 </head>
 <body>
   <main class="game-shell">
-    <section class="game-stage" aria-label="酒吧接酒杯小遊戲">
+    <section class="game-stage has-debug-button" aria-label="酒吧接酒杯小遊戲">
       <canvas id="gameCanvas" width="1280" height="720"></canvas>
 
       <div id="loadingOverlay" class="loading-overlay is-black" aria-label="Loading">
@@ -93,6 +93,8 @@
             <input id="debugInputArea" type="checkbox">
             輸入區 / 中線
           </label>
+          <button id="debugFillCans" class="debug-action-button" type="button">補滿罐罐</button>
+          <button id="debugSkipLevel" class="debug-action-button" type="button">跳過此關</button>
           <div class="debug-number-row">
             <span>reverseSwitchDistance</span>
             <input id="debugReverseDistance" type="number" min="0" step="1" value="22">
@@ -112,6 +114,6 @@
     </section>
   </main>
 
-  <script src="Source/app.js?v=20260712-ios-score-y15"></script>
+  <script src="Source/app.js?v=20260713-can-popup-image1"></script>
 </body>
 </html>
