@@ -254,6 +254,7 @@
   const JUKEBOX_CLICK_DRAG_THRESHOLD = 14;
   const MAX_CANS = 3;
   const CAN_DROP_START_TIME = 20;
+  const CAN_MIN_BOTTLES_BETWEEN_DROPS = 5;
   const CAN_INVENTORY_UI = { x: WIDTH / 2 - 86, y: HEIGHT - 58, slotWidth: 52, slotHeight: 38, gap: 8 };
   const LOADING_BLACK_MS = 500;
   const LOADING_COVER_FADE_MS = 1000;
@@ -315,6 +316,7 @@
   let currentLevelCatchCount = 0;
   let missCount = 0;
   let canCount = 0;
+  let bottlesSinceLastCanDrop = CAN_MIN_BOTTLES_BETWEEN_DROPS;
   let hasEverCollectedCan = false;
   let hasUsedCan = false;
   let canStatusMessage = null;
@@ -454,6 +456,7 @@
     currentLevelCatchCount = 0;
     missCount = 0;
     canCount = 0;
+    bottlesSinceLastCanDrop = CAN_MIN_BOTTLES_BETWEEN_DROPS;
     hasEverCollectedCan = false;
     hasUsedCan = false;
     canStatusMessage = null;
@@ -1381,9 +1384,23 @@
     if (lifeDropChance > 0 && Math.random() < lifeDropChance) {
       return lifeDropType;
     }
-    const canAvailable = currentLevel === 1 && timeLeft <= CAN_DROP_START_TIME && canCount < MAX_CANS;
+
+    const canAvailable =
+      canCount < MAX_CANS &&
+      bottlesSinceLastCanDrop >= CAN_MIN_BOTTLES_BETWEEN_DROPS &&
+      (
+        (currentLevel === 1 && timeLeft <= CAN_DROP_START_TIME) ||
+        currentLevel === 2
+      );
     const pool = canAvailable ? [...glassTypes, canDropType] : glassTypes;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const type = pool[Math.floor(Math.random() * pool.length)];
+
+    if (type.isCan) {
+      bottlesSinceLastCanDrop = 0;
+    } else {
+      bottlesSinceLastCanDrop += 1;
+    }
+    return type;
   }
 
   function resetGlassTrajectoryFromCat(glass) {
@@ -1541,6 +1558,7 @@
     cat2Enabled = true;
     timeLeft = ROUND_SECONDS;
     spawnTimer = 0;
+    bottlesSinceLastCanDrop = CAN_MIN_BOTTLES_BETWEEN_DROPS;
     finalCountdownSoundPlayed = false;
     stopVoiceLoop();
     resetRoundVisualsForLevelClear();
