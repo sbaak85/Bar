@@ -116,11 +116,15 @@
 
   const suzyImage = loadImage("Assets/Yume/Suzy.png");
   const suzySleepImage = loadImage("Assets/Yume/Suzy_sleep.png");
+  const cat1EatParts = {
+    body: loadImage("Assets/Yume/cat1_eat_body.png"),
+    tail: loadImage("Assets/Yume/cat1_eat_tail.png"),
+  };
   const angerImage = loadImage("Assets/anger.png");
   const lifePopupImage = loadImage("Assets/+life.png");
-  const canPopupImage = loadImage("Assets/+1CAN.png");
   const missPopupImage = loadImage("Assets/Font/Miss.png");
   const canItemImage = loadImage("Assets/wine bottle/Can1.png");
+  const cheeseItemImage = loadImage("Assets/wine bottle/GS.png");
   const blackboardImage = loadImage("Assets/blackboard.png");
   const timeIconImage = loadImage("Assets/Time.png");
   const infoPageSources = ["Assets/Info_Page1.png", "Assets/Info_Page2.png", "Assets/Info_Page3.png"];
@@ -172,6 +176,11 @@
     tray: { x: 224, y: 366, width: 1087, height: 381 },
   };
 
+  const cat1EatCrops = {
+    body: { x: 41, y: 48, width: 796, height: 569 },
+    tail: { x: 26, y: 41, width: 222, height: 147 },
+  };
+
   const suzy = {
     x: 420,
     y: 326,
@@ -183,6 +192,20 @@
     bounceDuration: 0.48,
     crop: { x: 232, y: 328, width: 735, height: 791 },
     sleepCrop: { x: 176, y: 598, width: 685, height: 346 },
+  };
+
+  const cat1EatAnimation = {
+    active: false,
+    feedTimer: 0,
+    feedDuration: 6,
+    tailTime: 0,
+    jitterTime: 0,
+    bodyHeight: 74,
+    offsetY: 5,
+    bodyPivotXRatio: 0.5,
+    tailOffsetXRatio: 0.83,
+    tailPivotYRatio: 0.57,
+    tailWidthRatio: 0.35,
   };
 
   const cat2Crops = {
@@ -252,9 +275,10 @@
   const LEVEL_CLEAR_CONFETTI_SECONDS = 3;
   const JUKEBOX_BUTTON = { x: 38, y: 318, width: 54, height: 32 };
   const JUKEBOX_CLICK_DRAG_THRESHOLD = 14;
-  const MAX_CANS = 3;
-  const CAN_DROP_START_TIME = 20;
+  const MAX_SPECIAL_ITEMS = 3;
   const CAN_MIN_BOTTLES_BETWEEN_DROPS = 5;
+  const CAT1_FEED_SPAWN_FREQUENCY_SCALE = 0.3;
+  const CAT1_FEED_GLASS_SPEED_SCALE = 0.7;
   const CAN_INVENTORY_UI = { x: WIDTH / 2 - 86, y: HEIGHT - 58, slotWidth: 52, slotHeight: 38, gap: 8 };
   const LOADING_BLACK_MS = 500;
   const LOADING_COVER_FADE_MS = 1000;
@@ -315,7 +339,7 @@
   let currentLevelScore = 0;
   let currentLevelCatchCount = 0;
   let missCount = 0;
-  let canCount = 0;
+  let specialInventory = [];
   let bottlesSinceLastCanDrop = CAN_MIN_BOTTLES_BETWEEN_DROPS;
   let hasEverCollectedCan = false;
   let hasUsedCan = false;
@@ -420,6 +444,15 @@
     isCan: true,
     noRotation: true,
   };
+  const cheeseDropType = {
+    name: "cheese",
+    image: cheeseItemImage,
+    crop: { x: 56, y: 35, width: 908, height: 774 },
+    aspect: 908 / 774,
+    color: "#ffd83d",
+    points: 0,
+    isCheese: true,
+  };
   const LIFE_DROP_CHANCE_BY_LIVES = {
     1: 1 / 8,
     2: 1 / 16,
@@ -455,7 +488,7 @@
     currentLevelScore = 0;
     currentLevelCatchCount = 0;
     missCount = 0;
-    canCount = 0;
+    specialInventory = [];
     bottlesSinceLastCanDrop = CAN_MIN_BOTTLES_BETWEEN_DROPS;
     hasEverCollectedCan = false;
     hasUsedCan = false;
@@ -490,6 +523,7 @@
     suzy.awake = false;
     suzy.sleepTime = 0;
     suzy.bounceTime = suzy.bounceDuration;
+    setCat1Eating(false);
     gameOver = false;
     paused = false;
     running = true;
@@ -735,7 +769,7 @@
     return {
       x: x - 12,
       y: y - 12,
-      width: slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 24,
+      width: slotWidth * MAX_SPECIAL_ITEMS + gap * (MAX_SPECIAL_ITEMS - 1) + 24,
       height: slotHeight + 24,
     };
   }
@@ -824,6 +858,7 @@
 
   function startCatEatSound() {
     try {
+      if (!catEatSound.paused) return;
       catEatSound.currentTime = 0;
       catEatSound.play().catch(() => {
         // Browsers may block audio until a direct user gesture is accepted.
@@ -842,6 +877,10 @@
     }
   }
 
+  function stopCatEatSoundIfIdle() {
+    if (!isCat1Feeding() && !isCat2Feeding()) stopCatEatSound();
+  }
+
   function pauseCatEatSound() {
     try {
       catEatSound.pause();
@@ -851,7 +890,7 @@
   }
 
   function resumeCatEatSound() {
-    if (!isCat2Feeding()) return;
+    if (!isCat1Feeding() && !isCat2Feeding()) return;
     try {
       catEatSound.play().catch(() => {
         // Browsers may block audio until a direct user gesture is accepted.
@@ -1354,7 +1393,11 @@
 
   function spawnGlass() {
     const type = chooseDropType();
-    const size = type.isLife ? 48 + Math.random() * 8 : type.isCan ? 50 + Math.random() * 8 : 58 + Math.random() * 18;
+    const size = type.isLife
+      ? 48 + Math.random() * 8
+      : type.isCan || type.isCheese
+        ? 50 + Math.random() * 8
+        : 58 + Math.random() * 18;
     const startX = SPAWN_LINE.left + Math.random() * (SPAWN_LINE.right - SPAWN_LINE.left);
     const targetX = Math.max(54, Math.min(WIDTH - 54, startX + (-280 + Math.random() * 560)));
     const fallDistance = HEIGHT + 70 - SPAWN_LINE.y;
@@ -1385,19 +1428,23 @@
       return lifeDropType;
     }
 
+    const inventoryHasSpace = specialInventory.length < MAX_SPECIAL_ITEMS;
     const canAvailable =
-      canCount < MAX_CANS &&
+      inventoryHasSpace &&
       bottlesSinceLastCanDrop >= CAN_MIN_BOTTLES_BETWEEN_DROPS &&
-      (
-        (currentLevel === 1 && timeLeft <= CAN_DROP_START_TIME) ||
-        currentLevel === 2
-      );
-    const pool = canAvailable ? [...glassTypes, canDropType] : glassTypes;
+      currentLevel === 2;
+    const cheeseAvailable =
+      inventoryHasSpace &&
+      currentLevel === 2 &&
+      timeLeft <= ROUND_SECONDS / 2;
+    const pool = [...glassTypes];
+    if (canAvailable) pool.push(canDropType);
+    if (cheeseAvailable) pool.push(cheeseDropType);
     const type = pool[Math.floor(Math.random() * pool.length)];
 
     if (type.isCan) {
       bottlesSinceLastCanDrop = 0;
-    } else {
+    } else if (!type.isCheese) {
       bottlesSinceLastCanDrop += 1;
     }
     return type;
@@ -1513,6 +1560,7 @@
     suzy.awake = false;
     suzy.sleepTime = 0;
     suzy.bounceTime = suzy.bounceDuration;
+    setCat1Eating(false);
     cat2.attackTimer = 0;
     cat2.reactTimer = 0;
     cat2.feedTimer = 0;
@@ -1690,6 +1738,7 @@
     if (cat2Enabled) updateCat2(delta);
     updateVoiceLoop(delta);
     if (!suzy.awake) suzy.sleepTime += delta;
+    updateCat1Eating(delta);
 
     if (countdownActive) {
       countdownTime -= delta;
@@ -1723,7 +1772,10 @@
     const scorePressure = Math.min(1, score / 1500);
     const baseSpawnEvery = 1.08 - 0.46 * (1 - Math.pow(1 - scorePressure, 1.65));
     const finalTenMultiplier = currentLevel >= 2 ? LEVEL_TWO_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER : LEVEL_ONE_FINAL_TEN_SECONDS_SPAWN_MULTIPLIER;
-    const spawnEvery = timeLeft <= 10 ? baseSpawnEvery / finalTenMultiplier : baseSpawnEvery;
+    const normalSpawnEvery = timeLeft <= 10 ? baseSpawnEvery / finalTenMultiplier : baseSpawnEvery;
+    const spawnEvery = isCat1Feeding()
+      ? normalSpawnEvery / CAT1_FEED_SPAWN_FREQUENCY_SCALE
+      : normalSpawnEvery;
     if (spawnTimer <= 0) {
       spawnGlass();
       spawnTimer = spawnEvery;
@@ -1733,15 +1785,16 @@
       const glass = glasses[i];
       const previousX = glass.x;
       const previousY = glass.y;
-      glass.age += delta;
+      const glassDelta = delta * (isCat1Feeding() ? CAT1_FEED_GLASS_SPEED_SCALE : 1);
+      glass.age += glassDelta;
       if (glass.catHitCooldown > 0) glass.catHitCooldown = Math.max(0, glass.catHitCooldown - delta);
       const t = glass.age / glass.duration;
       const horizontalEase = Math.min(t, 1);
       glass.x = glass.startX + (glass.targetX - glass.startX) * horizontalEase;
       glass.y = glass.startY - glass.arcHeight * Math.sin(Math.PI * Math.min(t, 1)) + glass.fallDistance * t * t;
-      glass.rotation += glass.spin * delta;
+      glass.rotation += glass.spin * glassDelta;
 
-      if (cat2Enabled && !isCat2Feeding() && !glass.type.isLife && !glass.type.isCan && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
+      if (cat2Enabled && !isCat2Feeding() && !glass.type.isLife && !glass.type.isCan && !glass.type.isCheese && glass.y > previousY && glass.catHitCooldown <= 0 && doesGlassPathOverlapRect(glass, previousX, previousY, getCat2HeadCollision())) {
         triggerCat2Attack();
         resetGlassTrajectoryFromCat(glass);
         playCatDeflectSounds();
@@ -1769,12 +1822,16 @@
         }
 
         if (glass.type.isCan) {
-          const added = canCount < MAX_CANS;
-          if (added) {
-            canCount += 1;
-            hasEverCollectedCan = true;
-            if (canStatusMessage && canStatusMessage.text === "已經沒有罐罐了...") canStatusMessage = null;
-            addImageSplashNextFrame(glass.x, trayTop - 10, canPopupImage, 96);
+          activateCanEffect();
+          playSound(eventSounds.cupClose);
+          playCatchSound();
+          glasses.splice(i, 1);
+          continue;
+        }
+
+        if (glass.type.isCheese) {
+          if (specialInventory.length < MAX_SPECIAL_ITEMS) {
+            specialInventory.push("cheese");
           }
           playSound(eventSounds.cupClose);
           playCatchSound();
@@ -1803,7 +1860,7 @@
 
       if (glass.y > HEIGHT + 36) {
         glasses.splice(i, 1);
-        if (glass.type.isLife || glass.type.isCan) {
+        if (glass.type.isLife || glass.type.isCan || glass.type.isCheese) {
           continue;
         }
 
@@ -1933,13 +1990,28 @@
     ctx.rotate(glass.rotation);
 
     if (glass.type.image.complete && glass.type.image.naturalWidth > 0) {
-      ctx.drawImage(
-        glass.type.image,
-        -glass.width / 2,
-        -glass.size / 2,
-        glass.width,
-        glass.size
-      );
+      if (glass.type.crop) {
+        const crop = glass.type.crop;
+        ctx.drawImage(
+          glass.type.image,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          -glass.width / 2,
+          -glass.size / 2,
+          glass.width,
+          glass.size
+        );
+      } else {
+        ctx.drawImage(
+          glass.type.image,
+          -glass.width / 2,
+          -glass.size / 2,
+          glass.width,
+          glass.size
+        );
+      }
     } else {
       ctx.fillStyle = glass.type.color;
       ctx.fillRect(-glass.width / 2, -glass.size / 2, glass.width, glass.size);
@@ -1954,26 +2026,43 @@
     ctx.fillStyle = "rgba(18, 8, 7, 0)";
     ctx.strokeStyle = "rgba(255, 247, 220, 0)";
     ctx.lineWidth = 2;
-    ctx.fillRect(x - 8, y - 7, slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 16, slotHeight + 14);
-    ctx.strokeRect(x - 8, y - 7, slotWidth * MAX_CANS + gap * (MAX_CANS - 1) + 16, slotHeight + 14);
+    ctx.fillRect(x - 8, y - 7, slotWidth * MAX_SPECIAL_ITEMS + gap * (MAX_SPECIAL_ITEMS - 1) + 16, slotHeight + 14);
+    ctx.strokeRect(x - 8, y - 7, slotWidth * MAX_SPECIAL_ITEMS + gap * (MAX_SPECIAL_ITEMS - 1) + 16, slotHeight + 14);
 
-    for (let i = 0; i < MAX_CANS; i += 1) {
+    for (let i = 0; i < MAX_SPECIAL_ITEMS; i += 1) {
       const slotX = x + i * (slotWidth + gap);
       ctx.strokeStyle = "rgba(255, 247, 220, 0)";
       ctx.strokeRect(slotX, y, slotWidth, slotHeight);
-      if (i >= canCount) continue;
-      if (canItemImage.complete && canItemImage.naturalWidth > 0) {
+      const itemType = specialInventory[i];
+      if (!itemType) continue;
+      const itemImage = itemType === "cheese" ? cheeseItemImage : canItemImage;
+      const crop = itemType === "cheese" ? cheeseDropType.crop : null;
+      if (itemImage.complete && itemImage.naturalWidth > 0) {
         const imageHeight = (slotHeight - 6) * 1.25;
-        const imageWidth = imageHeight * (canItemImage.naturalWidth / canItemImage.naturalHeight);
-        ctx.drawImage(
-          canItemImage,
-          slotX + slotWidth / 2 - imageWidth / 2,
-          y + slotHeight / 2 - imageHeight / 2,
-          imageWidth,
-          imageHeight
-        );
+        const imageWidth = imageHeight * (crop ? crop.width / crop.height : itemImage.naturalWidth / itemImage.naturalHeight);
+        if (crop) {
+          ctx.drawImage(
+            itemImage,
+            crop.x,
+            crop.y,
+            crop.width,
+            crop.height,
+            slotX + slotWidth / 2 - imageWidth / 2,
+            y + slotHeight / 2 - imageHeight / 2,
+            imageWidth,
+            imageHeight
+          );
+        } else {
+          ctx.drawImage(
+            itemImage,
+            slotX + slotWidth / 2 - imageWidth / 2,
+            y + slotHeight / 2 - imageHeight / 2,
+            imageWidth,
+            imageHeight
+          );
+        }
       } else {
-        ctx.fillStyle = "#f0c66a";
+        ctx.fillStyle = itemType === "cheese" ? "#ffd83d" : "#f0c66a";
         ctx.fillRect(slotX + 8, y + 7, slotWidth - 16, slotHeight - 14);
       }
     }
@@ -1985,7 +2074,7 @@
 
     const { x, y, slotWidth, gap } = CAN_INVENTORY_UI;
     const t = Math.min(1, canStatusMessage.age / canStatusMessage.life);
-    const centerX = x + (slotWidth * MAX_CANS + gap * (MAX_CANS - 1)) / 2;
+    const centerX = x + (slotWidth * MAX_SPECIAL_ITEMS + gap * (MAX_SPECIAL_ITEMS - 1)) / 2;
     const baselineY = y - 12 - t * 34;
     const alpha = t < 0.18 ? t / 0.18 : Math.max(0, 1 - (t - 0.42) / 0.58);
 
@@ -2035,7 +2124,107 @@
     }
   }
 
+  function setCat1Eating(active) {
+    cat1EatAnimation.active = Boolean(active);
+    if (!cat1EatAnimation.active) cat1EatAnimation.feedTimer = 0;
+    cat1EatAnimation.tailTime = 0;
+    cat1EatAnimation.jitterTime = 0;
+  }
+
+  function isCat1Feeding() {
+    return cat1EatAnimation.active && cat1EatAnimation.feedTimer > 0;
+  }
+
+  function startCat1Feeding() {
+    const wasFeeding = isCat1Feeding();
+    setCat1Eating(true);
+    cat1EatAnimation.feedTimer = cat1EatAnimation.feedDuration;
+    if (!wasFeeding) spawnTimer /= CAT1_FEED_SPAWN_FREQUENCY_SCALE;
+    startCatEatSound();
+  }
+
+  function updateCat1Eating(delta) {
+    if (!isCat1Feeding()) return;
+    const previousFeedTimer = cat1EatAnimation.feedTimer;
+    cat1EatAnimation.feedTimer = Math.max(0, cat1EatAnimation.feedTimer - delta);
+    cat1EatAnimation.tailTime += delta;
+    cat1EatAnimation.jitterTime += delta;
+    if (previousFeedTimer > 0 && cat1EatAnimation.feedTimer <= 0) {
+      spawnTimer *= CAT1_FEED_SPAWN_FREQUENCY_SCALE;
+      setCat1Eating(false);
+      stopCatEatSoundIfIdle();
+    }
+  }
+
+  function getCat1EatLayout() {
+    const bodyCrop = cat1EatCrops.body;
+    const bodyHeight = cat1EatAnimation.bodyHeight;
+    const bodyWidth = bodyHeight * (bodyCrop.width / bodyCrop.height);
+    const bodyLeft = suzy.x - bodyWidth * cat1EatAnimation.bodyPivotXRatio;
+    const bodyTop = suzy.y + cat1EatAnimation.offsetY - bodyHeight;
+    return { bodyCrop, bodyWidth, bodyHeight, bodyLeft, bodyTop };
+  }
+
+  function drawCat1Eating() {
+    const bodyImage = cat1EatParts.body;
+    const tailImage = cat1EatParts.tail;
+    if (!bodyImage.complete || bodyImage.naturalWidth === 0) return;
+
+    const layout = getCat1EatLayout();
+    const tailCrop = cat1EatCrops.tail;
+    const yShake = Math.sin(cat1EatAnimation.jitterTime * 28) * 2;
+    const bodyTop = layout.bodyTop + yShake;
+
+    if (tailImage.complete && tailImage.naturalWidth > 0) {
+      const tailWidth = layout.bodyWidth * cat1EatAnimation.tailWidthRatio;
+      const tailHeight = tailWidth * (tailCrop.height / tailCrop.width);
+      const tailPivotX = layout.bodyLeft + layout.bodyWidth * cat1EatAnimation.tailOffsetXRatio;
+      const tailPivotY = bodyTop + layout.bodyHeight * cat1EatAnimation.tailPivotYRatio;
+      const tailAngle =
+        Math.sin(cat1EatAnimation.tailTime * 26) * 0.24 +
+        Math.sin(cat1EatAnimation.tailTime * 61) * 0.04;
+
+      ctx.save();
+      ctx.translate(tailPivotX, tailPivotY);
+      ctx.rotate(tailAngle);
+      ctx.drawImage(
+        tailImage,
+        tailCrop.x,
+        tailCrop.y,
+        tailCrop.width,
+        tailCrop.height,
+        0,
+        -tailHeight / 2,
+        tailWidth,
+        tailHeight
+      );
+      ctx.restore();
+    }
+
+    ctx.drawImage(
+      bodyImage,
+      layout.bodyCrop.x,
+      layout.bodyCrop.y,
+      layout.bodyCrop.width,
+      layout.bodyCrop.height,
+      layout.bodyLeft,
+      bodyTop,
+      layout.bodyWidth,
+      layout.bodyHeight
+    );
+
+    const countdownValue = Math.ceil(cat1EatAnimation.feedTimer);
+    if (countdownValue > 0 && countdownValue <= 4) {
+      drawBitmapText(`${countdownValue}..`, layout.bodyLeft + layout.bodyWidth * 0.28, bodyTop + 5, "blue", 0.22);
+    }
+  }
+
   function drawSuzy() {
+    if (cat1EatAnimation.active) {
+      drawCat1Eating();
+      return;
+    }
+
     const image = suzy.awake ? suzyImage : suzySleepImage;
     const crop = suzy.awake ? suzy.crop : suzy.sleepCrop;
     if (!image.complete || image.naturalWidth === 0) return;
@@ -2088,25 +2277,24 @@
     startCatEatSound();
   }
 
+  function activateCanEffect() {
+    hasEverCollectedCan = true;
+    hasUsedCan = true;
+    if (canStatusMessage) canStatusMessage = null;
+    playCanOpenSound();
+    if (cat2Enabled && !isCat2Feeding()) {
+      startCat2Feeding();
+    } else {
+      startCat1Feeding();
+    }
+  }
+
   function tryUseCan() {
     if (!running || paused || gameOver || countdownActive) return false;
-    if (!cat2Enabled) {
-      if (hasEverCollectedCan && canCount > 0) {
-        showCanStatusMessage("此道具尚未開放使用...", eventSounds.canUnavailable);
-      }
-      return false;
-    }
-    if (canCount <= 0) {
-      if (hasUsedCan) {
-        showCanStatusMessage("已經沒有罐罐了...", eventSounds.canEmpty);
-      }
-      return false;
-    }
-    if (isCat2Feeding()) return false;
-    canCount -= 1;
-    hasUsedCan = true;
-    playCanOpenSound();
-    startCat2Feeding();
+    const canIndex = specialInventory.indexOf("can");
+    if (canIndex < 0) return false;
+    specialInventory.splice(canIndex, 1);
+    activateCanEffect();
     draw();
     return true;
   }
@@ -2199,7 +2387,7 @@
       cat2.feedTimer = Math.max(0, cat2.feedTimer - delta);
       cat2.feedTailTime += delta;
       cat2.feedJitterTime += delta;
-      if (previousFeedTimer > 0 && cat2.feedTimer <= 0) stopCatEatSound();
+      if (previousFeedTimer > 0 && cat2.feedTimer <= 0) stopCatEatSoundIfIdle();
     }
     if (cat2.attackTimer > 0) cat2.attackTimer = Math.max(0, cat2.attackTimer - delta);
     if (cat2.reactTimer > 0) cat2.reactTimer = Math.max(0, cat2.reactTimer - delta);
@@ -3392,7 +3580,7 @@
   });
 
   debugFillCans.addEventListener("click", () => {
-    canCount = MAX_CANS;
+    specialInventory = Array(MAX_SPECIAL_ITEMS).fill("can");
     hasEverCollectedCan = true;
     if (canStatusMessage && canStatusMessage.text === "已經沒有罐罐了...") canStatusMessage = null;
     draw();
